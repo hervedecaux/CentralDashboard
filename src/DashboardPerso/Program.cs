@@ -10,7 +10,15 @@ var culture = new CultureInfo("fr-FR");
 CultureInfo.DefaultThreadCurrentCulture = culture;
 CultureInfo.DefaultThreadCurrentUICulture = culture;
 
-var builder = WebApplication.CreateBuilder(args);
+// Version publiée lancée depuis un autre dossier (ex. lancement automatique à l'ouverture de session) :
+// la configuration et les fichiers web sont lus à côté de l'exécutable.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json"))
+        ? null
+        : AppContext.BaseDirectory,
+});
 
 // Base SQLite locale. Par défaut : ~/Library/Application Support/DashboardPerso/dashboard.db sur macOS.
 // Modifiable via "Database:Path" dans appsettings.json.

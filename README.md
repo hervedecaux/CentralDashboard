@@ -35,6 +35,35 @@ Au premier lancement, la base est créée automatiquement avec cinq catégories 
 
 Pour le développement, `dotnet watch` recharge l'application à chaque modification de fichier.
 
+### 3. Installer l'application pour qu'elle tourne en permanence (recommandé)
+
+Plutôt que de lancer `dotnet run` à chaque fois, installez une version autonome qui démarre toute seule à l'ouverture de session et tourne en arrière-plan :
+
+```bash
+cd chemin/vers/CentralDashboard
+scripts/macos/installer.sh
+```
+
+Le script :
+
+1. publie l'application en version Release autonome pour votre processeur (Apple Silicon `osx-arm64`, ou Intel `osx-x64`, détecté automatiquement) dans `~/Applications/DashboardPerso` ;
+2. ajoute un lancement automatique à l'ouverture de session (`~/Library/LaunchAgents/local.dashboardperso.plist`), relancé en cas d'arrêt inattendu ;
+3. démarre l'application et ouvre **http://localhost:5080**.
+
+Ensuite, il suffit d'ouvrir http://localhost:5080 (pensez à le mettre en favori).
+
+| Action | Commande |
+|---|---|
+| Mettre à jour (git pull, republication, redémarrage) | `scripts/macos/mettre-a-jour.sh` |
+| Réinstaller / redémarrer avec le code actuel | `scripts/macos/installer.sh` |
+| Désinstaller (les données sont conservées) | `scripts/macos/desinstaller.sh` |
+| Arrêter jusqu'à la prochaine session | `launchctl bootout gui/$(id -u)/local.dashboardperso` |
+| Journaux | `~/Library/Logs/DashboardPerso/` |
+
+**Sources NuGet :** le fichier `nuget.config` à la racine du dépôt limite la restauration à nuget.org et ignore les sources configurées globalement sur le Mac (par exemple le flux Telerik d'un autre projet). Sans lui, `dotnet publish` échoue avec « Impossible de charger l'index de service pour la source https://nuget.telerik.com/v3/index.json » si ce flux n'est pas authentifié.
+
+Vos données restent dans `~/Library/Application Support/DashboardPerso/` : installer, mettre à jour ou désinstaller n'y touche pas, et les migrations s'appliquent au redémarrage. Pendant que la version installée tourne, le port 5080 est occupé : arrêtez-la avant de lancer `dotnet run` pour développer.
+
 ## Où sont mes données ?
 
 Dans un seul fichier SQLite :
@@ -155,7 +184,7 @@ dotnet run                                            # la migration est appliqu
 
 Les services renvoient des `List<T>`, ce qui correspond directement au paramètre `Data` du `TelerikGrid`. Pour migrer une page :
 
-1. Ajouter le paquet `Telerik.UI.for.Blazor` (flux NuGet Telerik, licence requise) et suivre leur guide d'installation (`AddTelerikBlazor()`, `<TelerikRootComponent>` dans `MainLayout.razor`, CSS du thème).
+1. Ajouter le paquet `Telerik.UI.for.Blazor` (flux NuGet Telerik, licence requise), après avoir ajouté la source `https://nuget.telerik.com/v3/index.json` dans le `nuget.config` du dépôt (identifiants hors du dépôt), et suivre leur guide d'installation (`AddTelerikBlazor()`, `<TelerikRootComponent>` dans `MainLayout.razor`, CSS du thème).
 2. Remplacer le `<QuickGrid Items="...">` de la page par un `<TelerikGrid Data="@items">` avec ses `<GridColumn>`. Les services et les modèles ne changent pas.
 
 Chaque grille est signalée par un commentaire dans le code (`TelerikGrid`).
