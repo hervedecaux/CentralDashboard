@@ -29,7 +29,9 @@ cd chemin/vers/dashboard-perso/src/DashboardPerso
 dotnet run
 ```
 
-Le navigateur s'ouvre sur **http://localhost:5080**. Pour arrêter : `Ctrl + C` dans le Terminal.
+Le navigateur s'ouvre sur **http://localhost:5090**. Pour arrêter : `Ctrl + C` dans le Terminal.
+
+`dotnet run` lance la version de **développement** : port **5090** et base séparée `dashboard-dev.db` (réglages dans `appsettings.Development.json`). Elle peut tourner en même temps que la version installée (port 5080, étape 3) sans toucher à vos vraies données.
 
 Au premier lancement, la base est créée automatiquement avec cinq catégories de budget (Logement, Alimentation, Transport, Loisirs, Santé) à 0 €. Dans **Budget**, vous pouvez les renommer, les supprimer, ajouter des sous-catégories et saisir les montants **annuels**.
 
@@ -65,7 +67,7 @@ Ensuite, il suffit d'ouvrir http://localhost:5080 (pensez à le mettre en favori
 
 **Si l'app ne démarre pas après un redémarrage :** macOS demande d'autoriser les éléments lancés en arrière-plan. Ouvrez Réglages Système › Général › Ouverture, section « Autoriser en arrière-plan », vérifiez que DashboardPerso (ou l'élément sans nom de développeur) est activé, puis relancez `scripts/macos/installer.sh`. `scripts/macos/diagnostic.sh` indique l'état du lancement automatique et les dernières erreurs.
 
-Vos données restent dans `~/Library/Application Support/DashboardPerso/` : installer, mettre à jour ou désinstaller n'y touche pas, et les migrations s'appliquent au redémarrage. Pendant que la version installée tourne, le port 5080 est occupé : arrêtez-la avant de lancer `dotnet run` pour développer.
+Vos données restent dans `~/Library/Application Support/DashboardPerso/` : installer, mettre à jour ou désinstaller n'y touche pas, et les migrations s'appliquent au redémarrage. La version installée utilise le port 5080 et `dashboard.db` ; `dotnet run` utilise le port 5090 et `dashboard-dev.db` : les deux peuvent tourner en même temps.
 
 ## Où sont mes données ?
 
@@ -75,7 +77,9 @@ Dans un seul fichier SQLite :
 ~/Library/Application Support/DashboardPerso/dashboard.db
 ```
 
-Le chemin exact est affiché dans le Terminal au démarrage (`Base de données : …`). Il est en dehors du dossier du code : supprimer ou recloner le projet ne touche pas aux données.
+La version de développement (`dotnet run`) utilise une autre base, dans le même dossier : `dashboard-dev.db`. Pour repartir de zéro en développement, supprimez ce fichier ; pour essayer sur une copie de vos vraies données, copiez `dashboard.db` en `dashboard-dev.db`.
+
+Le chemin exact est affiché dans le Terminal au démarrage (`Environnement : … · base de données : …`). Il est en dehors du dossier du code : supprimer ou recloner le projet ne touche pas aux données.
 
 - **Sauvegarde** : copier ce fichier (application arrêtée), ou laisser Time Machine s'en charger.
 - **Changer d'emplacement** (ex. un dossier iCloud Drive) : renseigner `Database:Path` dans `src/DashboardPerso/appsettings.json`.
