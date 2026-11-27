@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Payee> Payees => Set<Payee>();
+    public DbSet<ExpenseSplit> ExpenseSplits => Set<ExpenseSplit>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
@@ -45,6 +46,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Account>().HasIndex(a => a.ImportId).IsUnique();
+
+        modelBuilder.Entity<ExpenseSplit>()
+            .HasOne(s => s.Expense).WithMany(e => e.Splits)
+            .HasForeignKey(s => s.ExpenseId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ExpenseSplit>()
+            .HasOne(s => s.Category).WithMany()
+            .HasForeignKey(s => s.CategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<Account>().HasData(new Account
         {
             Id = Account.MainAccountId, Label = "Compte courant", Kind = AccountKind.CheckingAccount, ImportId = "Compte"

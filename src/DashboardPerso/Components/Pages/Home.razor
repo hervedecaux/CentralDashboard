@@ -32,6 +32,7 @@ else
             <span class="stat-value @(planned - spent < 0 ? "negative" : "")">@((planned - spent).ToString("C"))</span>
             <ProgressBar Percent="@(planned > 0 ? (double)(spent / planned * 100) : 0)" />
         </div>
+        <BalanceCard />
         <div class="card stat">
             <span class="stat-label">Tâches ouvertes</span>
             <span class="stat-value">@openTasks</span>
@@ -116,7 +117,7 @@ else
                             <CategoryBadge Category="e.Category" />
                         }
                     </span>
-                    <span class="amount">@e.Amount.ToString("C")</span>
+                    <span class="amount @(e.IsIncome ? "positive" : "")">@(e.IsIncome ? "+" : "")@e.Amount.ToString("C")</span>
                 </li>
             }
         </ul>

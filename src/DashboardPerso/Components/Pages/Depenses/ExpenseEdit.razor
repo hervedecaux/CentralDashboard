@@ -22,6 +22,11 @@ else
         <EditForm Model="model" OnValidSubmit="Save" FormName="expense-edit">
             <DataAnnotationsValidator />
 
+            <div class="segmented">
+                <button type="button" class="@(model.IsIncome ? "" : "active")" @onclick="() => model.IsIncome = false">Dépense</button>
+                <button type="button" class="@(model.IsIncome ? "active" : "")" @onclick="() => model.IsIncome = true">Recette</button>
+            </div>
+
             <div class="form-row">
                 <label>
                     Date
@@ -51,13 +56,34 @@ else
             </div>
 
             <div class="form-row">
-                <label>
-                    Catégorie
-                    <InputSelect @bind-Value="model.CategoryId" disabled="@model.IsTransfer">
-                        <option value="">Sans catégorie</option>
-                        <CategoryOptions Categories="categories" />
-                    </InputSelect>
-                </label>
+                @if (model.IsIncome)
+                {
+                    <label>
+                        Catégorie
+                        <select disabled><option>Recette (hors budget)</option></select>
+                    </label>
+                }
+                else if (splitting)
+                {
+                    <label>
+                        Catégorie
+                        <select disabled><option>Ventilée sur plusieurs catégories</option></select>
+                    </label>
+                }
+                else
+                {
+                    <label>
+                        Catégorie
+                        <InputSelect @bind-Value="model.CategoryId" disabled="@model.IsTransfer">
+                            <option value="">Sans catégorie</option>
+                            <CategoryOptions Categories="categories" />
+                        </InputSelect>
+                        @if (!model.IsTransfer)
+                        {
+                            <button type="button" class="link small left" @onclick="StartSplit">Ventiler sur plusieurs catégories</button>
+                        }
+                    </label>
+                }
                 <label>
                     Compte / carte
                     <InputSelect @bind-Value="model.AccountId">
@@ -65,6 +91,40 @@ else
                     </InputSelect>
                 </label>
             </div>
+
+            @if (splitting && !model.IsIncome && !model.IsTransfer)
+            {
+                <div class="split-editor">
+                    <strong>Ventilation</strong>
+                    @foreach (var part in parts)
+                    {
+                        <div class="split-row">
+                            <select value="@part.CategoryId" @onchange="e => part.CategoryId = int.TryParse(e.Value as string, out var c) ? c : null">
+                                <option value="">Sans catégorie</option>
+                                <CategoryOptions Categories="categories" />
+                            </select>
+                            <input type="number" step="0.01" @bind="part.Amount" @bind:event="oninput" />
+                            <button type="button" class="link small" title="Retirer" @onclick="() => parts.Remove(part)">✕</button>
+                        </div>
+                    }
+                    <div class="split-footer">
+                        <button type="button" class="link small" @onclick="AddPart">+ Ajouter une part</button>
+                        @if (Remaining != 0)
+                        {
+                            <span class="negative small">Reste à répartir : @Remaining.ToString("C")</span>
+                            <button type="button" class="link small" @onclick="FillRemaining">Mettre le reste sur la dernière part</button>
+                        }
+                        else
+                        {
+                            <span class="positive small">Total réparti ✓</span>
+                        }
+                        <span class="spacer"></span>
+                        <button type="button" class="link small" @onclick="CancelSplit">Annuler la ventilation</button>
+                    </div>
+                </div>
+            }
+
+            @if (error is not null) { <p class="negative">@error</p> }
 
             <label class="inline">
                 <InputCheckbox @bind-Value="model.IsTransfer" />
@@ -100,6 +160,41 @@ else
     private string payeeName = "";
     private string? payeeHint;
     private bool notFound;
+    private string? error;
+
+    // Ventilation en cours d'édition.
+    private class Part
+    {
+        public int? CategoryId { get; set; }
+        public decimal Amount { get; set; }
+    }
+    private List<Part> parts = [];
+    private bool splitting;
+    private decimal Remaining => model!.Amount - parts.Sum(p => p.Amount);
+
+    private void StartSplit()
+    {
+        splitting = true;
+        parts =
+        [
+            new Part { CategoryId = model!.CategoryId, Amount = model.Amount },
+            new Part(),
+        ];
+    }
+
+    private void AddPart() => parts.Add(new Part { Amount = Math.Max(Remaining, 0) });
+
+    private void FillRemaining()
+    {
+        if (parts.Count > 0) parts[^1].Amount += Remaining;
+    }
+
+    private void CancelSplit()
+    {
+        splitting = false;
+        model!.CategoryId = parts.FirstOrDefault()?.CategoryId;
+        parts = [];
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -111,12 +206,25 @@ else
             : await Expenses.GetAsync(Id!.Value);
         notFound = model is null;
         payeeName = model?.Payee?.Name ?? "";
+        parts = model?.Splits.Select(x => new Part { CategoryId = x.CategoryId, Amount = x.Amount }).ToList() ?? [];
+        splitting = parts.Count > 0;
     }
 
     private async Task Save()
     {
-        await Expenses.SaveAsync(model!, payeeName);
-        Nav.NavigateTo("depenses");
+        error = null;
+        model!.Splits = splitting && !model.IsIncome && !model.IsTransfer
+            ? parts.Select(p => new ExpenseSplit { CategoryId = p.CategoryId, Amount = p.Amount }).ToList()
+            : [];
+        try
+        {
+            await Expenses.SaveAsync(model, payeeName);
+            Nav.NavigateTo("depenses");
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
     }
 
     /// <summary>Bénéficiaire connu avec une catégorie par défaut : on la propose si la dépense n'en a pas.</summary>

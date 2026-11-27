@@ -17,7 +17,7 @@
 @if (result is not null)
 {
     <div class="card notice success">
-        <strong>@result dépense(s) importée(s).</strong>
+        <strong>@result opération(s) importée(s).</strong>
         <a href="depenses">Voir les dépenses</a> · <button class="link" @onclick="Reset">Importer un autre fichier</button>
     </div>
 }
@@ -35,7 +35,7 @@ else if (rows is null)
         @if (loading) { <p class="muted">Lecture du fichier…</p> }
         @if (error is not null) { <p class="negative">@error</p> }
         <p class="muted small">
-            Seuls les débits du compte sont proposés comme dépenses. Une opération déjà importée est reconnue
+            Les débits deviennent des dépenses, les crédits des recettes (hors budget, utiles au solde). Une opération déjà importée est reconnue
             et ignorée : vous pouvez réimporter un fichier qui chevauche le précédent sans créer de doublon.
         </p>
     </div>
@@ -52,7 +52,7 @@ else
                 <span class="muted small">@SourceLabel(g.Key) : @g.Count()</span>
             }
         </div>
-        <div class="card stat"><span class="stat-label">Ignorées</span><span>@Count(ImportStatus.AlreadyImported) déjà importée(s)</span><span>@Count(ImportStatus.PossibleDuplicate) doublon(s) possible(s)</span><span>@Count(ImportStatus.Credit) crédit(s)</span></div>
+        <div class="card stat"><span class="stat-label">Ignorées</span><span>@Count(ImportStatus.AlreadyImported) déjà importée(s)</span><span>@Count(ImportStatus.PossibleDuplicate) doublon(s) possible(s)</span>@if (bankBalance is not null) {<span class="muted small">Solde banque au @bankBalanceDate?.ToString("dd/MM/yyyy") : @bankBalance?.ToString("C")</span>}</div>
     </section>
 
     @if (ruleDraft is not null)
@@ -86,8 +86,9 @@ else
     <div class="toolbar">
         <label class="inline"><input type="checkbox" @bind="showIgnored" /> Afficher les lignes ignorées</label>
         <span class="muted">
-            @Selected.Count() sélectionnée(s) · dépenses <strong>@Selected.Where(r => !r.IsTransfer).Sum(r => r.Operation.Debit ?? 0).ToString("C")</strong>
-            @if (Selected.Any(r => r.IsTransfer)) { <span> · transferts @Selected.Where(r => r.IsTransfer).Sum(r => r.Operation.Debit ?? 0).ToString("C")</span> }
+            @Selected.Count() sélectionnée(s) · dépenses <strong>@Selected.Where(r => !r.IsTransfer && !r.IsIncome).Sum(r => r.Operation.Amount).ToString("C")</strong>
+            @if (Selected.Any(r => r.IsIncome && !r.IsTransfer)) { <span> · recettes <span class="positive">@Selected.Where(r => r.IsIncome && !r.IsTransfer).Sum(r => r.Operation.Amount).ToString("C")</span></span> }
+            @if (Selected.Any(r => r.IsTransfer)) { <span> · transferts @Selected.Where(r => r.IsTransfer).Sum(r => r.Operation.Amount).ToString("C")</span> }
         </span>
     </div>
 
@@ -108,7 +109,7 @@ else
                 {
                     <tr class="@(row.Include ? "" : "excluded")">
                         <td>
-                            <input type="checkbox" @bind="row.Include" disabled="@(row.Status is ImportStatus.Credit or ImportStatus.AlreadyImported)" />
+                            <input type="checkbox" @bind="row.Include" disabled="@(row.Status is ImportStatus.AlreadyImported)" />
                         </td>
                         <td>@row.Operation.Date.ToString("dd/MM")</td>
                         <td>
@@ -118,11 +119,11 @@ else
                                 @if (!row.Operation.IsCardStatementTotal) { <span> · @row.Payee</span> }
                                 @if (sourceFilter == "" && row.Operation.IsCardOperation) { <span class="badge">@SourceLabel(row.Operation.Source)</span> }
                                 @if (row.Operation.IsCardStatementTotal) { <span class="badge transfer" title="Total des paiements par carte, importés en détail depuis la section carte">Relevé carte</span> }
+                                @if (row.IsIncome) { <span class="badge income">Recette</span> }
                                 @switch (row.Status)
                                 {
                                     case ImportStatus.AlreadyImported: <span class="badge">Déjà importée</span>; break;
                                     case ImportStatus.PossibleDuplicate: <span class="badge warn" title="Une dépense saisie à la main a la même date et le même montant">Doublon possible</span>; break;
-                                    case ImportStatus.Credit: <span class="badge">Crédit</span>; break;
                                 }
                             </div>
                         </td>
@@ -131,7 +132,14 @@ else
                             else { <span class="positive">+@(row.Operation.Credit?.ToString("C"))</span> }
                         </td>
                         <td>
-                            @if (row.Operation.IsDebit)
+                            @if (row.IsIncome)
+                            {
+                                <select value="@(row.IsTransfer ? TransferValue : "")" @onchange="e => SetCategory(row, e.Value as string)">
+                                    <option value="">Recette</option>
+                                    <option value="@TransferValue">Transfert (ex. depuis l'épargne)</option>
+                                </select>
+                            }
+                            else
                             {
                                 <select value="@(row.IsTransfer ? TransferValue : row.CategoryId?.ToString() ?? "")" @onchange="e => SetCategory(row, e.Value as string)">
                                     <option value="">Sans catégorie</option>
@@ -149,7 +157,7 @@ else
                             }
                         </td>
                         <td>
-                            @if (row.Operation.IsDebit)
+                            @if (!row.Operation.IsCardStatementTotal)
                             {
                                 <button class="link small" @onclick="() => StartRule(row)" title="Catégoriser automatiquement les opérations similaires">+ règle</button>
                             }
@@ -162,7 +170,7 @@ else
 
     <div class="form-actions">
         <button class="btn btn-primary" disabled="@(!Selected.Any() || saving)" @onclick="Save">
-            Importer @Selected.Count() dépense(s)
+            Importer @Selected.Count() opération(s)
         </button>
         <button class="btn btn-ghost" @onclick="Reset">Annuler</button>
     </div>
@@ -196,7 +204,9 @@ else
         .Where(r => showIgnored || r.Status is ImportStatus.New or ImportStatus.PossibleDuplicate)
         .Where(r => sourceFilter == "" || r.Operation.Source == sourceFilter);
 
-    private IEnumerable<ImportRow> Selected => rows?.Where(r => r.Include && r.Operation.IsDebit) ?? [];
+    private IEnumerable<ImportRow> Selected => rows?.Where(r => r.Include) ?? [];
+    private decimal? bankBalance;
+    private DateOnly? bankBalanceDate;
 
     private int Count(ImportStatus s) => rows!.Count(r => r.Status == s);
 
@@ -215,7 +225,9 @@ else
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             fileName = file.Name;
-            rows = await Import.PreviewAsync(ms.ToArray());
+            var preview = await Import.PreviewStatementAsync(ms.ToArray());
+            rows = preview.Rows;
+            (bankBalance, bankBalanceDate) = (preview.BankBalance, preview.BankBalanceDate);
             sources = rows.Select(r => r.Operation.Source).Distinct()
                 .OrderBy(s => s != BankOperation.AccountSource).ThenBy(s => s).ToList();
             sourceFilter = "";
@@ -270,7 +282,7 @@ else
     private async Task Save()
     {
         saving = true;
-        result = await Import.ImportAsync(rows!);
+        result = await Import.ImportAsync(rows!, bankBalance, bankBalanceDate);
         saving = false;
         rows = null;
     }

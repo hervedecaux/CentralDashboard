@@ -18,9 +18,9 @@ public class PayeeService(IDbContextFactory<AppDbContext> dbFactory)
             {
                 g.Key,
                 Count = g.Count(),
-                Total = g.Sum(e => e.Amount),
+                Total = g.Sum(e => e.IsIncome ? -e.Amount : e.Amount),
                 Last = g.Max(e => e.Date),
-                Uncategorized = g.Count(e => e.CategoryId == null && !e.IsTransfer),
+                Uncategorized = g.Count(e => e.CategoryId == null && !e.IsTransfer && !e.IsIncome && !e.Splits.Any()),
             })
             .ToDictionaryAsync(x => x.Key);
 
@@ -83,7 +83,7 @@ public class PayeeService(IDbContextFactory<AppDbContext> dbFactory)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         var payee = await db.Payees.AsNoTracking().FirstAsync(p => p.Id == id);
-        var query = db.Expenses.Where(e => e.PayeeId == id && e.CategoryId == null && !e.IsTransfer);
+        var query = db.Expenses.Where(e => e.PayeeId == id && e.CategoryId == null && !e.IsTransfer && !e.IsIncome && !e.Splits.Any());
         if (payee.DefaultIsTransfer)
             return await query.ExecuteUpdateAsync(s => s.SetProperty(e => e.IsTransfer, true));
         if (payee.DefaultCategoryId is { } cat)

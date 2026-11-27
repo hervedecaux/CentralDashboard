@@ -43,5 +43,11 @@ public record BankOperation
 
     public bool IsDebit => Debit is > 0;
 
+    /// <summary>Montant (positif) de l'opération, débit ou crédit.</summary>
+    public decimal Amount => Debit ?? Credit ?? 0;
+
     public const string AccountSource = "Compte";
 }
+
+/// <summary>Relevé lu : opérations et solde du compte indiqué par la banque.</summary>
+public record BankStatement(List<BankOperation> Operations, decimal? Balance, DateOnly? BalanceDate);

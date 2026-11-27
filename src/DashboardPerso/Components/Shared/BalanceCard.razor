@@ -1,0 +1,31 @@
+@* Solde théorique du compte courant comparé au solde indiqué par la banque. *@
+@inject AccountService Accounts
+
+<div class="card stat">
+    <span class="stat-label">Solde théorique</span>
+    @if (balance is null)
+    {
+        <span class="muted">Saisissez un solde initial dans <a href="comptes">Comptes et cartes</a>.</span>
+    }
+    else
+    {
+        <span class="stat-value @(balance.Theoretical < 0 ? "negative" : "")">@balance.Theoretical.ToString("C")</span>
+        @if (balance.Difference is { } diff)
+        {
+            <span class="@(diff == 0 ? "positive" : "negative") small">
+                Banque au @balance.BankDate?.ToString("dd/MM") : @balance.BankBalance?.ToString("C")
+                @(diff == 0 ? " ✓" : $" (écart {diff:+#,##0.00 €;-#,##0.00 €})")
+            </span>
+        }
+        else
+        {
+            <span class="muted small">depuis @balance.InitialBalance.ToString("C") le @balance.InitialDate.ToString("dd/MM/yyyy")</span>
+        }
+    }
+</div>
+
+@code {
+    private AccountBalance? balance;
+
+    protected override async Task OnInitializedAsync() => balance = await Accounts.GetBalanceAsync();
+}

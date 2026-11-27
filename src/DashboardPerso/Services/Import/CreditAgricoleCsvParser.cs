@@ -24,6 +24,19 @@ public static partial class CreditAgricoleCsvParser
 
     public static List<BankOperation> Parse(byte[] content) => ParseText(Decode(content));
 
+    /// <summary>Opérations + solde du compte indiqué en tête de relevé (« Solde au 27/11/2026 3 235,79 € »).</summary>
+    public static BankStatement ParseStatement(byte[] content)
+    {
+        var text = Decode(content);
+        var operations = ParseText(text);
+        var m = BalanceLine().Match(text);
+        return m.Success
+            ? new BankStatement(operations,
+                ParseAmount(m.Groups[2].Value),
+                DateOnly.ParseExact(m.Groups[1].Value, "dd/MM/yyyy", French))
+            : new BankStatement(operations, null, null);
+    }
+
     /// <summary>UTF-8 si le fichier en est valide, sinon Windows-1252 (format habituel de la banque).</summary>
     public static string Decode(byte[] content)
     {
@@ -124,6 +137,10 @@ public static partial class CreditAgricoleCsvParser
         if (cleaned.Length == 0) return null;
         return decimal.Parse(cleaned, NumberStyles.Number, French);
     }
+
+    // « Solde au 27/11/2026 3 235,79 € » (montant éventuellement négatif).
+    [GeneratedRegex(@"Solde au (\d{2}/\d{2}/\d{4})\s+(-?[\d\s\u00A0\u202F]+,\d{2})")]
+    private static partial Regex BalanceLine();
 
     [GeneratedRegex(@"carte\s+n\S*\s+\S*(\d{4})\b", RegexOptions.IgnoreCase)]
     private static partial Regex CardNumber();

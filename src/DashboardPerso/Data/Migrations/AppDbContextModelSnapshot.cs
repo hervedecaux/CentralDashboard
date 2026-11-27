@@ -23,8 +23,20 @@ namespace DashboardPerso.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<double?>("BankBalance")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateOnly?>("BankBalanceDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ImportId")
                         .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("InitialBalance")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateOnly?>("InitialBalanceDate")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Kind")
@@ -166,6 +178,9 @@ namespace DashboardPerso.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsIncome")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsTransfer")
                         .HasColumnType("INTEGER");
 
@@ -194,6 +209,30 @@ namespace DashboardPerso.Data.Migrations
                     b.HasIndex("PayeeId");
 
                     b.ToTable("Expenses");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.ExpenseSplit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Amount")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("ExpenseId");
+
+                    b.ToTable("ExpenseSplits");
                 });
 
             modelBuilder.Entity("DashboardPerso.Models.Payee", b =>
@@ -310,6 +349,24 @@ namespace DashboardPerso.Data.Migrations
                     b.Navigation("Payee");
                 });
 
+            modelBuilder.Entity("DashboardPerso.Models.ExpenseSplit", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.BudgetCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DashboardPerso.Models.Expense", "Expense")
+                        .WithMany("Splits")
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Expense");
+                });
+
             modelBuilder.Entity("DashboardPerso.Models.Payee", b =>
                 {
                     b.HasOne("DashboardPerso.Models.BudgetCategory", "DefaultCategory")
@@ -325,6 +382,11 @@ namespace DashboardPerso.Data.Migrations
                     b.Navigation("Children");
 
                     b.Navigation("Expenses");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.Expense", b =>
+                {
+                    b.Navigation("Splits");
                 });
 
             modelBuilder.Entity("DashboardPerso.Models.Payee", b =>
