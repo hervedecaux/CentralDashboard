@@ -25,7 +25,7 @@ public class ImportRow
     public bool Include { get; set; }
     public int? CategoryId { get; set; }
 
-    /// <summary>Crédit (salaire, remboursement…) : importé comme recette, hors budget, compté dans le solde.</summary>
+    /// <summary>Crédit (salaire, remboursement…) : importé comme recette, dans une catégorie de recettes.</summary>
     public bool IsIncome => !Operation.IsDebit;
 
     /// <summary>Transfert : importé sans catégorie et hors budget.</summary>
@@ -55,7 +55,15 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
 
     private sealed record Rule(string Pattern, string Normalized, int? CategoryId, bool MarkAsTransfer);
 
-    private sealed record Defaults(List<Rule> Rules, Dictionary<string, (int? CategoryId, bool IsTransfer)> Payees);
+    private sealed record Defaults(
+        List<Rule> Rules,
+        Dictionary<string, (int? CategoryId, bool IsTransfer)> Payees,
+        HashSet<int> IncomeCategoryIds)
+    {
+        /// <summary>Vrai si la catégorie convient au sens de l'opération (recette ↔ catégorie de recettes).</summary>
+        public bool Fits(int? categoryId, bool isIncome) =>
+            categoryId is { } id && IncomeCategoryIds.Contains(id) == isIncome;
+    }
 
     public async Task<List<ImportRow>> PreviewAsync(byte[] content) => (await PreviewStatementAsync(content)).Rows;
 
@@ -137,6 +145,9 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         var already = (await db.Expenses.Where(e => keys.Contains(e.ImportKey!)).Select(e => e.ImportKey!).ToListAsync())
             .ToHashSet();
 
+        var incomeCategories = (await db.BudgetCategories.Where(c => c.Kind == CategoryKind.Income)
+            .Select(c => c.Id).ToListAsync()).ToHashSet();
+
         var added = 0;
         foreach (var row in selected.Where(r => !already.Contains(r.ImportKey)))
         {
@@ -148,7 +159,9 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
                 Date = row.Operation.Date,
                 Label = Truncate(string.IsNullOrWhiteSpace(row.Label) ? row.Operation.Description : row.Label, 120),
                 Amount = row.Operation.Amount,
-                CategoryId = row.IsTransfer || row.IsIncome ? null : row.CategoryId,
+                // Catégorie gardée seulement si elle correspond au sens de l'opération.
+                CategoryId = row.IsTransfer || row.CategoryId is not { } cat || incomeCategories.Contains(cat) != row.IsIncome
+                    ? null : row.CategoryId,
                 IsTransfer = row.IsTransfer,
                 IsIncome = row.IsIncome,
                 Account = account,
@@ -204,17 +217,17 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             row.CategoryId = null;
             return;
         }
-        // Une recette n'a pas de catégorie de budget : seul le « transfert » s'applique.
+        // Une recette ne prend qu'une catégorie de recettes, une dépense qu'une catégorie de dépenses.
         if (defaults.Payees.TryGetValue(TextNormalizer.Normalize(row.Payee), out var d)
-            && (!row.IsIncome || d.IsTransfer))
+            && (d.IsTransfer || defaults.Fits(d.CategoryId, row.IsIncome)))
         {
             row.IsTransfer = d.IsTransfer;
-            row.CategoryId = d.IsTransfer || row.IsIncome ? null : d.CategoryId;
+            row.CategoryId = d.IsTransfer ? null : d.CategoryId;
             row.FromPayeeDefault = true;
             return;
         }
-        var rule = FindRule(defaults.Rules, row.Operation);
-        if (row.IsIncome && rule is { MarkAsTransfer: false }) rule = null;
+        var rule = FindRule(defaults.Rules.Where(r => r.MarkAsTransfer || defaults.Fits(r.CategoryId, row.IsIncome)),
+            row.Operation);
         row.IsTransfer = rule?.MarkAsTransfer ?? false;
         row.CategoryId = rule is { MarkAsTransfer: false } ? rule.CategoryId : null;
         row.MatchedRule = rule?.Pattern;
@@ -234,10 +247,12 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         var payees = await db.Payees.AsNoTracking()
             .Where(p => p.DefaultCategoryId != null || p.DefaultIsTransfer)
             .ToDictionaryAsync(p => p.Key, p => (p.DefaultCategoryId, p.DefaultIsTransfer));
-        return new Defaults(await LoadRulesAsync(db), payees);
+        var income = (await db.BudgetCategories.Where(c => c.Kind == CategoryKind.Income).Select(c => c.Id).ToListAsync())
+            .ToHashSet();
+        return new Defaults(await LoadRulesAsync(db), payees, income);
     }
 
-    private static Rule? FindRule(List<Rule> rules, BankOperation op)
+    private static Rule? FindRule(IEnumerable<Rule> rules, BankOperation op)
     {
         var label = TextNormalizer.Normalize(op.RawLabel);
         return rules.FirstOrDefault(r => label.Contains(r.Normalized, StringComparison.Ordinal));

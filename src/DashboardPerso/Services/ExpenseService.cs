@@ -53,7 +53,7 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         await using var db = await dbFactory.CreateDbContextAsync();
         // Ventilation : au moins deux parts, dont la somme égale le montant.
         var splits = expense.Splits.Where(x => x.Amount != 0).ToList();
-        if (splits.Count >= 2 && !expense.IsTransfer && !expense.IsIncome)
+        if (splits.Count >= 2 && !expense.IsTransfer)
         {
             if (splits.Sum(x => x.Amount) != expense.Amount)
                 throw new InvalidOperationException(
@@ -80,14 +80,31 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
             {
                 if (payee.Id == 0) await db.SaveChangesAsync();
                 expense.PayeeId = payee.Id;
-                if (expense.CategoryId is null && splits.Count == 0 && !expense.IsTransfer && !expense.IsIncome)
+                if (expense.CategoryId is null && splits.Count == 0 && !expense.IsTransfer)
                 {
-                    expense.IsTransfer = payee.DefaultIsTransfer;
-                    expense.CategoryId = payee.DefaultCategoryId;
+                    if (payee.DefaultIsTransfer) expense.IsTransfer = true;
+                    else if (payee.DefaultCategoryId is { } def && await KindOfAsync(db, def) == Kind(expense))
+                        expense.CategoryId = def;
                 }
             }
         }
-        if (expense.IsTransfer || expense.IsIncome) expense.CategoryId = null;
+        if (expense.IsTransfer)
+        {
+            expense.CategoryId = null;
+            splits = [];
+        }
+
+        // Une dépense va dans une catégorie de dépenses, une recette dans une catégorie de recettes.
+        var used = splits.Select(x => x.CategoryId).Append(expense.CategoryId).OfType<int>().Distinct().ToList();
+        if (used.Count > 0)
+        {
+            var wrong = await db.BudgetCategories.Where(c => used.Contains(c.Id) && c.Kind != Kind(expense))
+                .Select(c => c.Name).FirstOrDefaultAsync();
+            if (wrong is not null)
+                throw new InvalidOperationException(expense.IsIncome
+                    ? $"« {wrong} » est une catégorie de dépenses : choisissez une catégorie de recettes."
+                    : $"« {wrong} » est une catégorie de recettes : choisissez une catégorie de dépenses.");
+        }
 
         await using var tx = await db.Database.BeginTransactionAsync();
         if (expense.Id == 0) db.Expenses.Add(expense);
@@ -103,6 +120,11 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         await tx.CommitAsync();
         expense.Splits = splits;
     }
+
+    private static CategoryKind Kind(Expense e) => e.IsIncome ? CategoryKind.Income : CategoryKind.Expense;
+
+    private static Task<CategoryKind> KindOfAsync(AppDbContext db, int categoryId) =>
+        db.BudgetCategories.Where(c => c.Id == categoryId).Select(c => c.Kind).FirstOrDefaultAsync();
 
     public async Task DeleteAsync(int id)
     {

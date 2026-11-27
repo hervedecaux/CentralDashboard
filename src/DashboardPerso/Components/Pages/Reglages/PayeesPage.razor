@@ -70,7 +70,7 @@ else
                         <td class="col-justify-end nowrap">
                             @if (s.Uncategorized > 0 && (p.DefaultCategoryId is not null || p.DefaultIsTransfer))
                             {
-                                <button class="btn btn-ghost small" @onclick="() => Apply(p)">Appliquer à @s.Uncategorized dépense(s)</button>
+                                <button class="btn btn-ghost small" @onclick="() => Apply(p)">Appliquer aux opérations sans catégorie (@s.Uncategorized)</button>
                             }
                             else if (s.Uncategorized > 0)
                             {

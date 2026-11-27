@@ -25,6 +25,18 @@ else
                 <ValidationMessage For="() => model.Name" />
             </label>
 
+            <div class="field">
+                <span>Type</span>
+                <div class="segmented">
+                    <button type="button" class="@(model.IsIncome ? "" : "active")" disabled="@KindLocked" @onclick="() => SetKind(CategoryKind.Expense)">Dépenses</button>
+                    <button type="button" class="@(model.IsIncome ? "active" : "")" disabled="@KindLocked" @onclick="() => SetKind(CategoryKind.Income)">Recettes</button>
+                </div>
+                @if (model.ParentId is not null)
+                {
+                    <span class="muted small">Une sous-catégorie a le type de sa catégorie principale.</span>
+                }
+            </div>
+
             <label>
                 Catégorie parente
                 @if (childCount > 0)
@@ -34,9 +46,9 @@ else
                 }
                 else
                 {
-                    <InputSelect @bind-Value="model.ParentId">
+                    <InputSelect @bind-Value="model.ParentId" @bind-Value:after="OnParentChanged">
                         <option value="">Aucune (catégorie principale)</option>
-                        @foreach (var p in parents)
+                        @foreach (var p in parents.Where(p => p.Kind == model.Kind))
                         {
                             <option value="@p.Id">@p.Name</option>
                         }
@@ -46,13 +58,15 @@ else
 
             <div class="form-row">
                 <label>
-                    @(childCount > 0 ? "Budget annuel non réparti (€)" : "Budget annuel (€)")
+                    @(model.IsIncome
+                        ? (childCount > 0 ? "Recettes prévues par an, non réparties (€)" : "Recettes prévues par an (€)")
+                        : (childCount > 0 ? "Budget annuel non réparti (€)" : "Budget annuel (€)"))
                     <InputNumber @bind-Value="model.AnnualBudget" step="0.01" />
                     <ValidationMessage For="() => model.AnnualBudget" />
                     <span class="muted small">
                         @if (childCount > 0)
                         {
-                            @($"S'ajoute aux budgets des sous-catégories ({childrenBudget.ToString("C")}). Total : {(childrenBudget + model.AnnualBudget).ToString("C")}.")
+                            @($"S'ajoute aux montants des sous-catégories ({childrenBudget.ToString("C")}). Total : {(childrenBudget + model.AnnualBudget).ToString("C")}.")
                         }
                         else
                         {
@@ -88,10 +102,10 @@ else
                 @if (usage.Expenses + usage.Rules > 0)
                 {
                     <label>
-                        @($"Que faire de ses {usage.Expenses} dépense(s) et {usage.Rules} règle(s) ?")
+                        @($"Que faire de ses {usage.Expenses} opération(s) et {usage.Rules} règle(s) ?")
                         <select @bind="reassignTo">
-                            <option value="">Dépenses sans catégorie, règles supprimées</option>
-                            @foreach (var c in others)
+                            <option value="">Opérations sans catégorie, règles supprimées</option>
+                            @foreach (var c in others.Where(c => c.Kind == model.Kind))
                             {
                                 <option value="@c.Id">Les rattacher à @c.FullName</option>
                             }
@@ -100,7 +114,7 @@ else
                 }
                 else
                 {
-                    <p class="muted">Aucune dépense ni règle n'utilise cette catégorie.</p>
+                    <p class="muted">Aucune opération ni règle n'utilise cette catégorie.</p>
                 }
                 <div class="form-actions">
                     <DeleteButton OnConfirm="Delete" />
@@ -113,9 +127,15 @@ else
 @code {
     [Parameter] public int? Id { get; set; }
     [SupplyParameterFromQuery(Name = "parent")] public int? ParentQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "type")] public string? TypeQuery { get; set; }
 
     private bool IsNew => Id is null;
-    private string Title => IsNew ? (model?.ParentId is not null ? "Nouvelle sous-catégorie" : "Nouvelle catégorie") : "Modifier la catégorie";
+    private string Title => IsNew
+        ? (model?.ParentId is not null ? "Nouvelle sous-catégorie" : model?.IsIncome == true ? "Nouvelle catégorie de recettes" : "Nouvelle catégorie")
+        : "Modifier la catégorie";
+
+    /// <summary>Le type d'une sous-catégorie suit celui de sa catégorie principale.</summary>
+    private bool KindLocked => model?.ParentId is not null;
 
     private BudgetCategory? model;
     private List<BudgetCategory> parents = [];
@@ -133,7 +153,13 @@ else
         if (IsNew)
         {
             var parent = parents.FirstOrDefault(p => p.Id == ParentQuery);
-            model = new BudgetCategory { ParentId = parent?.Id, Color = parent?.Color ?? "#4f6bed" };
+            var kind = parent?.Kind ?? (TypeQuery == "recette" ? CategoryKind.Income : CategoryKind.Expense);
+            model = new BudgetCategory
+            {
+                ParentId = parent?.Id,
+                Kind = kind,
+                Color = parent?.Color ?? (kind == CategoryKind.Income ? "#2e9d5b" : "#4f6bed"),
+            };
             return;
         }
 
@@ -146,6 +172,18 @@ else
         model.Parent = null;
         usage = await Budget.GetUsageAsync(model.Id);
         others = (await Budget.GetCategoriesAsync()).Where(c => c.Id != model.Id).ToList();
+    }
+
+    private void SetKind(CategoryKind kind)
+    {
+        if (model is null || model.Kind == kind) return;
+        model.Kind = kind;
+        if (model.ParentId is { } p && parents.FirstOrDefault(x => x.Id == p)?.Kind != kind) model.ParentId = null;
+    }
+
+    private void OnParentChanged()
+    {
+        if (model?.ParentId is { } p && parents.FirstOrDefault(x => x.Id == p) is { } parent) model.Kind = parent.Kind;
     }
 
     private async Task Save()
@@ -170,7 +208,7 @@ else
             await Budget.DeleteAsync(Id!.Value, int.TryParse(reassignTo, out var target) ? target : null);
             Nav.NavigateTo("budget");
         }
-        catch (CategoryInUseException ex)
+        catch (Exception ex) when (ex is CategoryInUseException or InvalidOperationException)
         {
             error = ex.Message;
         }

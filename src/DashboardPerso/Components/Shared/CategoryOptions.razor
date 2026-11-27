@@ -1,10 +1,31 @@
-@* Options d'un <select> de catégories : catégories principales, puis leurs sous-catégories en retrait. *@
-@foreach (var c in Categories)
+@* Options d'un <select> de catégories : catégories principales, puis leurs sous-catégories en retrait.
+   Sans Kind, les catégories de recettes sont regroupées à part. *@
+@if (Kind is not null)
 {
-    <option value="@c.Id">@(c.IsSubcategory ? "    ↳ " + c.Name : c.Name)</option>
+    @Options(Categories.Where(c => c.Kind == Kind))
+}
+else if (Categories.Any(c => c.IsIncome))
+{
+    <optgroup label="Dépenses">@Options(Categories.Where(c => !c.IsIncome))</optgroup>
+    <optgroup label="Recettes">@Options(Categories.Where(c => c.IsIncome))</optgroup>
+}
+else
+{
+    @Options(Categories)
 }
 
 @code {
     /// <summary>Catégories dans l'ordre de <c>BudgetService.GetCategoriesAsync</c>.</summary>
     [Parameter, EditorRequired] public IEnumerable<BudgetCategory> Categories { get; set; } = [];
+
+    /// <summary>Ne propose que les catégories de ce type (dépenses ou recettes).</summary>
+    [Parameter] public CategoryKind? Kind { get; set; }
+
+    private static RenderFragment Options(IEnumerable<BudgetCategory> categories) => __builder =>
+    {
+        foreach (var c in categories)
+        {
+            <option value="@c.Id">@(c.IsSubcategory ? "    ↳ " + c.Name : c.Name)</option>
+        }
+    };
 }

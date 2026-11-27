@@ -78,6 +78,9 @@ namespace DashboardPerso.Data.Migrations
                         .HasMaxLength(7)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -98,6 +101,7 @@ namespace DashboardPerso.Data.Migrations
                             Id = 1,
                             AnnualBudget = 0.0,
                             Color = "#4f6bed",
+                            Kind = 0,
                             Name = "Logement"
                         },
                         new
@@ -105,6 +109,7 @@ namespace DashboardPerso.Data.Migrations
                             Id = 2,
                             AnnualBudget = 0.0,
                             Color = "#2e9e6a",
+                            Kind = 0,
                             Name = "Alimentation"
                         },
                         new
@@ -112,6 +117,7 @@ namespace DashboardPerso.Data.Migrations
                             Id = 3,
                             AnnualBudget = 0.0,
                             Color = "#e08a1e",
+                            Kind = 0,
                             Name = "Transport"
                         },
                         new
@@ -119,6 +125,7 @@ namespace DashboardPerso.Data.Migrations
                             Id = 4,
                             AnnualBudget = 0.0,
                             Color = "#c2457a",
+                            Kind = 0,
                             Name = "Loisirs"
                         },
                         new
@@ -126,6 +133,7 @@ namespace DashboardPerso.Data.Migrations
                             Id = 5,
                             AnnualBudget = 0.0,
                             Color = "#7a5bd1",
+                            Kind = 0,
                             Name = "Santé"
                         });
                 });

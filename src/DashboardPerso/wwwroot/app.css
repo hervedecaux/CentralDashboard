@@ -200,3 +200,12 @@ input.search { min-width: 280px; }
 .rule-draft.plain { padding: 0; }
 .balance-grid { display: grid; grid-template-columns: max-content max-content; gap: 0.35rem 2rem; }
 .form-card form > .segmented { align-self: flex-start; }
+.form-card .field { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
+
+/* Recettes dans le budget */
+.section-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.5rem 0 0.6rem; }
+.section-header h2 { margin: 0; }
+.scroll-x { overflow-x: auto; }
+.table.monthly td, .table.monthly th { white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0.5rem; padding-right: 0.5rem; }
+.content .table-card table.table:not(.quickgrid) tfoot th { border-top: 2px solid var(--border); text-transform: none; letter-spacing: normal; font-size: inherit; color: var(--text); font-weight: 600; }
+.budget-tree td.col-justify-end, .budget-tree th.col-justify-end { white-space: nowrap; }

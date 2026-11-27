@@ -65,7 +65,7 @@ else
             <select @bind="ruleDraft.Target">
                 <option value="">Choisir…</option>
                 <option value="@TransferValue">Transfert (sans catégorie, hors budget)</option>
-                <CategoryOptions Categories="categories" />
+                <CategoryOptions Categories="categories" Kind="ruleDraft.Kind" />
             </select>
             <button class="btn btn-primary" disabled="@(ruleDraft.Target == "" || string.IsNullOrWhiteSpace(ruleDraft.Pattern))" @onclick="SaveRule">Créer et appliquer</button>
             <button class="btn btn-ghost" @onclick="() => ruleDraft = null">Annuler</button>
@@ -132,28 +132,18 @@ else
                             else { <span class="positive">+@(row.Operation.Credit?.ToString("C"))</span> }
                         </td>
                         <td>
-                            @if (row.IsIncome)
+                            <select value="@(row.IsTransfer ? TransferValue : row.CategoryId?.ToString() ?? "")" @onchange="e => SetCategory(row, e.Value as string)">
+                                <option value="">@(row.IsIncome ? "Recette sans catégorie" : "Sans catégorie")</option>
+                                <option value="@TransferValue">@(row.IsIncome ? "Transfert (ex. depuis l'épargne)" : "Transfert (hors budget)")</option>
+                                <CategoryOptions Categories="categories" Kind="KindOf(row)" />
+                            </select>
+                            @if (row.FromPayeeDefault)
                             {
-                                <select value="@(row.IsTransfer ? TransferValue : "")" @onchange="e => SetCategory(row, e.Value as string)">
-                                    <option value="">Recette</option>
-                                    <option value="@TransferValue">Transfert (ex. depuis l'épargne)</option>
-                                </select>
+                                <div class="muted small">défaut du bénéficiaire</div>
                             }
-                            else
+                            else if (row.MatchedRule is not null)
                             {
-                                <select value="@(row.IsTransfer ? TransferValue : row.CategoryId?.ToString() ?? "")" @onchange="e => SetCategory(row, e.Value as string)">
-                                    <option value="">Sans catégorie</option>
-                                    <option value="@TransferValue">Transfert (hors budget)</option>
-                                    <CategoryOptions Categories="categories" />
-                                </select>
-                                @if (row.FromPayeeDefault)
-                                {
-                                    <div class="muted small">défaut du bénéficiaire</div>
-                                }
-                                else if (row.MatchedRule is not null)
-                                {
-                                    <div class="muted small">règle « @row.MatchedRule »</div>
-                                }
+                                <div class="muted small">règle « @row.MatchedRule »</div>
                             }
                         </td>
                         <td>
@@ -189,7 +179,11 @@ else
         public string Pattern { get; set; } = "";
         /// <summary>Id de catégorie, ou <see cref="TransferValue"/>.</summary>
         public string Target { get; set; } = "";
+        /// <summary>Recette ou dépense, d'après l'opération qui a servi de modèle.</summary>
+        public CategoryKind Kind { get; init; }
     }
+
+    private static CategoryKind KindOf(ImportRow row) => row.IsIncome ? CategoryKind.Income : CategoryKind.Expense;
 
     private const string TransferValue = "transfert";
     private string sourceFilter = "";
@@ -262,6 +256,7 @@ else
         // Proposition : début du bénéficiaire, à raccourcir au besoin (ex. « ORANGE SA »).
         Pattern = SuggestPattern(row.Operation.Description),
         Target = row.IsTransfer ? TransferValue : row.CategoryId?.ToString() ?? "",
+        Kind = KindOf(row),
     };
 
     /// <summary>« ORANGE SA-ORANGE - Orange - Votre abonnement… » → « ORANGE SA-ORANGE ».</summary>

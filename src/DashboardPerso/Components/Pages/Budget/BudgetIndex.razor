@@ -22,39 +22,169 @@
         {
             <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
         }
-        <a class="btn btn-primary" href="budget/nouveau">+ Nouvelle catégorie</a>
     </div>
 </header>
 
-@if (lines is null)
+@if (overview is null)
 {
     <p class="muted">Chargement…</p>
 }
 else
 {
-    var planned = lines.Sum(l => l.Planned);
+    var o = overview;
+    var lines = o.Expenses;
+    var planned = o.PlannedExpenses;
     var spent = lines.Sum(l => l.Spent);
+    var plannedIncome = o.PlannedIncome;
     <section class="cards">
         <div class="card stat">
-            <span class="stat-label">Budget annuel</span>
-            <span class="stat-value">@lines.Sum(l => l.AnnualBudget).ToString("C")</span>
-            @if (!yearView) { <span class="muted">soit @planned.ToString("C") par mois</span> }
+            <span class="stat-label">Recettes @(yearView ? $"en {month.Year}" : "ce mois")</span>
+            <span class="stat-value positive">@o.ActualIncome.ToString("C")</span>
+            <span class="muted">prévu @(yearView ? "à date" : "") : @Shown(plannedIncome).ToString("C")</span>
         </div>
         <div class="card stat">
-            <span class="stat-label">Dépensé @(yearView ? $"en {month.Year}" : "ce mois")</span>
-            <span class="stat-value">@spent.ToString("C")</span>
-            @if (yearView)
-            {
-                <span class="muted">prévu à date : @PlannedToDate(planned).ToString("C")</span>
-            }
+            <span class="stat-label">Dépenses @(yearView ? $"en {month.Year}" : "ce mois")</span>
+            <span class="stat-value">@o.ActualExpenses.ToString("C")</span>
+            <span class="muted">prévu @(yearView ? "à date" : "") : @Shown(planned).ToString("C")</span>
         </div>
         <div class="card stat">
-            <span class="stat-label">Reste @(yearView ? "sur l'année" : "sur le mois")</span>
+            <span class="stat-label">Solde recettes − dépenses</span>
+            <span class="stat-value @(o.ActualBalance < 0 ? "negative" : "positive")">@Signed(o.ActualBalance)</span>
+            <span class="muted">prévu @(yearView ? "à date" : "") : @Signed(Shown(plannedIncome) - Shown(planned))</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Budget dépenses : reste @(yearView ? "sur l'année" : "sur le mois")</span>
             <span class="stat-value @(planned - spent < 0 ? "negative" : "")">@((planned - spent).ToString("C"))</span>
             <ProgressBar Percent="@(planned > 0 ? (double)(spent / planned * 100) : 0)" Over="spent > planned" />
         </div>
     </section>
 
+    <header class="section-header">
+        <h2>Recettes</h2>
+        <a class="btn btn-ghost" href="budget/nouveau?type=recette">+ Catégorie de recettes</a>
+    </header>
+    <div class="card table-card">
+        <table class="table budget-tree">
+            <thead>
+                <tr>
+                    <th>Catégorie</th>
+                    <th class="col-justify-end">Prévu sur l'année</th>
+                    <th class="col-justify-end">Prévu @(yearView ? "à date" : "/ mois")</th>
+                    <th class="col-justify-end">Encaissé</th>
+                    <th class="col-justify-end">Écart</th>
+                    <th class="col-progress">Réalisé</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in o.Incomes)
+                {
+                    @IncomeRow(line, false)
+                    @foreach (var child in line.Children)
+                    {
+                        @IncomeRow(child, true)
+                    }
+                    @if (line.Children.Count > 0 && (line.Category.AnnualBudget > 0 || line.OwnSpent > 0))
+                    {
+                        <tr class="sub muted">
+                            <td class="indent"><em>Non réparti</em></td>
+                            <td class="col-justify-end">@line.Category.AnnualBudget.ToString("C")</td>
+                            <td></td>
+                            <td class="col-justify-end">@line.OwnSpent.ToString("C")</td>
+                            <td colspan="3"></td>
+                        </tr>
+                    }
+                }
+                @if (o.UncategorizedIncome != 0)
+                {
+                    <tr class="muted">
+                        <td><em>Recettes sans catégorie</em></td>
+                        <td colspan="2"></td>
+                        <td class="col-justify-end">@o.UncategorizedIncome.ToString("C")</td>
+                        <td colspan="2"></td>
+                        <td class="col-justify-end nowrap"><a href="depenses" class="small">Catégoriser</a></td>
+                    </tr>
+                }
+            </tbody>
+            @if (o.Incomes.Count > 0)
+            {
+                <tfoot>
+                    <tr>
+                        <th>Total</th>
+                        <th class="col-justify-end">@o.AnnualIncome.ToString("C")</th>
+                        <th class="col-justify-end">@Shown(plannedIncome).ToString("C")</th>
+                        <th class="col-justify-end">@o.ActualIncome.ToString("C")</th>
+                        <th class="col-justify-end"><span class="@Gap(o.ActualIncome - Shown(plannedIncome))">@Signed(o.ActualIncome - Shown(plannedIncome))</span></th>
+                        <th colspan="2"></th>
+                    </tr>
+                </tfoot>
+            }
+        </table>
+        @if (o.Incomes.Count == 0)
+        {
+            <p class="muted empty">
+                Aucune catégorie de recettes. <a href="budget/nouveau?type=recette">Créer une catégorie</a>
+                (ex. Salaire, Primes, Revenus locatifs, Remboursements santé) pour suivre vos recettes prévues et réelles.
+            </p>
+        }
+    </div>
+
+    @if (yearView && monthly is { Count: > 0 })
+    {
+        @* Recettes mois par mois : met en évidence les revenus variables. *@
+        <h2>Recettes mois par mois</h2>
+        <div class="card table-card scroll-x">
+            <table class="table monthly">
+                <thead>
+                    <tr>
+                        <th>Catégorie</th>
+                        @for (var m = 1; m <= 12; m++)
+                        {
+                            <th class="col-justify-end">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedMonthName(m)</th>
+                        }
+                        <th class="col-justify-end">Total</th>
+                        <th class="col-justify-end">Moyenne</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in monthly)
+                    {
+                        var activeMonths = ElapsedMonths;
+                        <tr class="@(row.Category is null ? "muted" : "")">
+                            <td>
+                                @if (row.Category is null) { <em>Sans catégorie</em> }
+                                else { <span class="dot" style="background:@row.Category.Color"></span>@row.Category.Name }
+                            </td>
+                            @foreach (var v in row.Months)
+                            {
+                                <td class="col-justify-end">@(v == 0 ? "–" : v.ToString("N0"))</td>
+                            }
+                            <td class="col-justify-end"><strong>@row.Total.ToString("N0")</strong></td>
+                            <td class="col-justify-end">@(activeMonths > 0 ? (row.Total / activeMonths).ToString("N0") : "–")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th>Total</th>
+                        @for (var m = 0; m < 12; m++)
+                        {
+                            var i = m;
+                            <th class="col-justify-end">@monthly.Sum(r => r.Months[i]).ToString("N0")</th>
+                        }
+                        <th class="col-justify-end">@monthly.Sum(r => r.Total).ToString("N0")</th>
+                        <th class="col-justify-end">@(ElapsedMonths > 0 ? (monthly.Sum(r => r.Total) / ElapsedMonths).ToString("N0") : "–")</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <p class="muted small">Montants en euros. La moyenne porte sur les mois écoulés de l'année.</p>
+    }
+
+    <header class="section-header">
+        <h2>Dépenses</h2>
+        <a class="btn btn-ghost" href="budget/nouveau">+ Catégorie de dépenses</a>
+    </header>
     @* Tableau en arborescence (catégorie › sous-catégories). Un TelerikTreeList pourrait le remplacer. *@
     <div class="card table-card">
         <table class="table budget-tree">
@@ -88,20 +218,32 @@ else
                         </tr>
                     }
                 }
+                @if (o.UncategorizedExpenses != 0)
+                {
+                    <tr class="muted">
+                        <td><em>Dépenses sans catégorie</em></td>
+                        <td colspan="2"></td>
+                        <td class="col-justify-end">@o.UncategorizedExpenses.ToString("C")</td>
+                        <td colspan="2"></td>
+                        <td class="col-justify-end nowrap"><a href="depenses" class="small">Catégoriser</a></td>
+                    </tr>
+                }
             </tbody>
         </table>
         @if (lines.Count == 0) { <p class="muted empty">Aucune catégorie. <a href="budget/nouveau">Créer une catégorie</a></p> }
     </div>
     <p class="muted small">
-        Les montants saisis sont <strong>annuels</strong>. En vue mensuelle, le prévu vaut budget annuel ÷ 12.
-        Le budget d'une catégorie qui a des sous-catégories est la somme de celles-ci, plus une éventuelle part « non répartie ».
+        Les montants saisis sont <strong>annuels</strong>. En vue mensuelle, le prévu vaut montant annuel ÷ 12.
+        Le montant d'une catégorie qui a des sous-catégories est la somme de celles-ci, plus une éventuelle part « non répartie ».
+        Les transferts ne comptent ni en recettes ni en dépenses.
     </p>
 }
 
 @code {
     private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private bool yearView;
-    private List<BudgetLine>? lines;
+    private BudgetOverview? overview;
+    private List<MonthlyLine>? monthly;
 
     private BudgetPeriod Period => new(month.Year, yearView ? null : month.Month);
 
@@ -128,6 +270,50 @@ else
         </tr>
     };
 
+    private RenderFragment IncomeRow(BudgetLine line, bool isChild) => __builder =>
+    {
+        var plannedShown = Shown(line.Planned);
+        var gap = line.Spent - plannedShown;
+        <tr class="@(isChild ? "sub" : line.Children.Count > 0 ? "parent" : "")">
+            <td class="@(isChild ? "indent" : "")">
+                <span class="dot" style="background:@line.Category.Color"></span>
+                <a href="budget/@line.Category.Id" title="Modifier">@line.Category.Name</a>
+            </td>
+            <td class="col-justify-end">@line.AnnualBudget.ToString("C")</td>
+            <td class="col-justify-end">@plannedShown.ToString("C")</td>
+            <td class="col-justify-end">@line.Spent.ToString("C")</td>
+            <td class="col-justify-end"><span class="@Gap(gap)">@(plannedShown == 0 && line.Spent == 0 ? "" : Signed(gap))</span></td>
+            <td class="col-progress">
+                <ProgressBar Percent="@(plannedShown > 0 ? (double)(line.Spent / plannedShown * 100) : (line.Spent > 0 ? 100 : 0))" Color="@line.Category.Color" Neutral="true" />
+            </td>
+            <td class="col-justify-end nowrap">
+                <a href="budget/@line.Category.Id" class="small">Modifier</a>
+                @if (!isChild)
+                {
+                    <span class="muted"> · </span><a href="budget/nouveau?parent=@line.Category.Id" class="small">+ sous-catégorie</a>
+                }
+            </td>
+        </tr>
+    };
+
+    /// <summary>Prévu affiché : celui du mois, ou en vue année le prévu au prorata de l'année écoulée.</summary>
+    private decimal Shown(decimal planned) => yearView ? PlannedToDate(planned) : planned;
+
+    private static string Signed(decimal value) => (value > 0 ? "+" : "") + value.ToString("C");
+
+    /// <summary>Recette au-dessus du prévu : vert ; en dessous : rouge.</summary>
+    private static string Gap(decimal value) => value > 0 ? "positive" : value < 0 ? "negative" : "";
+
+    /// <summary>Mois écoulés de l'année affichée (12 pour une année passée).</summary>
+    private int ElapsedMonths
+    {
+        get
+        {
+            var today = DateTime.Today;
+            return today.Year > month.Year ? 12 : today.Year < month.Year ? 0 : today.Month;
+        }
+    }
+
     private decimal PlannedToDate(decimal annual) =>
         Math.Round(annual * Period.ElapsedFraction(DateOnly.FromDateTime(DateTime.Today)), 2);
 
@@ -151,5 +337,9 @@ else
         await Load();
     }
 
-    private async Task Load() => lines = await Budget.GetSummaryAsync(Period);
+    private async Task Load()
+    {
+        overview = await Budget.GetOverviewAsync(Period);
+        monthly = yearView ? await Budget.GetMonthlyAsync(month.Year, CategoryKind.Income) : null;
+    }
 }
