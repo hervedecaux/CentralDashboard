@@ -10,7 +10,7 @@
     <h1>Importer un relevé bancaire</h1>
     <div class="actions">
         <a class="btn btn-ghost" href="depenses/regles">Règles de catégorie</a>
-        <a class="btn btn-ghost" href="depenses">Retour aux dépenses</a>
+        <a class="btn btn-ghost" href="depenses">Retour aux opérations</a>
     </div>
 </header>
 
@@ -18,7 +18,7 @@
 {
     <div class="card notice success">
         <strong>@result opération(s) importée(s).</strong>
-        <a href="depenses">Voir les dépenses</a> · <button class="link" @onclick="Reset">Importer un autre fichier</button>
+        <a href="depenses">Voir les opérations</a> · <button class="link" @onclick="Reset">Importer un autre fichier</button>
     </div>
 }
 else if (rows is null)
