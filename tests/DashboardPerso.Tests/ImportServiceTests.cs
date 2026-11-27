@@ -108,9 +108,4 @@ public sealed class ImportServiceTests : IDisposable
         await service.ApplyRulesAsync(rows);
         Assert.Equal(5, edf.CategoryId);
     }
-
-    private sealed class TestDbFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
-    {
-        public AppDbContext CreateDbContext() => new(options);
-    }
 }

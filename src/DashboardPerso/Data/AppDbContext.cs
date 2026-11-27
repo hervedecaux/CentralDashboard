@@ -24,6 +24,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(e => e.CategoryId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<BudgetCategory>()
+            .HasOne(c => c.Parent)
+            .WithMany(c => c.Children)
+            .HasForeignKey(c => c.ParentId)
+            .OnDelete(DeleteBehavior.Restrict);   // on ne supprime pas une catégorie qui a des sous-catégories
+
         modelBuilder.Entity<Expense>().HasIndex(e => e.Date);
         modelBuilder.Entity<Expense>().HasIndex(e => e.ImportKey);
 
@@ -36,10 +42,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         // Quelques catégories de départ, modifiables depuis la page Budget.
         modelBuilder.Entity<BudgetCategory>().HasData(
-            new BudgetCategory { Id = 1, Name = "Logement", MonthlyBudget = 0, Color = "#4f6bed" },
-            new BudgetCategory { Id = 2, Name = "Alimentation", MonthlyBudget = 0, Color = "#2e9e6a" },
-            new BudgetCategory { Id = 3, Name = "Transport", MonthlyBudget = 0, Color = "#e08a1e" },
-            new BudgetCategory { Id = 4, Name = "Loisirs", MonthlyBudget = 0, Color = "#c2457a" },
-            new BudgetCategory { Id = 5, Name = "Santé", MonthlyBudget = 0, Color = "#7a5bd1" });
+            new BudgetCategory { Id = 1, Name = "Logement", AnnualBudget = 0, Color = "#4f6bed" },
+            new BudgetCategory { Id = 2, Name = "Alimentation", AnnualBudget = 0, Color = "#2e9e6a" },
+            new BudgetCategory { Id = 3, Name = "Transport", AnnualBudget = 0, Color = "#e08a1e" },
+            new BudgetCategory { Id = 4, Name = "Loisirs", AnnualBudget = 0, Color = "#c2457a" },
+            new BudgetCategory { Id = 5, Name = "Santé", AnnualBudget = 0, Color = "#7a5bd1" });
     }
 }

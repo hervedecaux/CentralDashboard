@@ -25,10 +25,7 @@ else
             <select @bind="categoryFilter">
                 <option value="">Toutes</option>
                 <option value="-1">Sans catégorie</option>
-                @foreach (var c in categories)
-                {
-                    <option value="@c.Id">@c.Name</option>
-                }
+                <CategoryOptions Categories="categories" />
             </select>
         </label>
         <span class="muted">@Filtered.Count() dépense(s) · total <strong>@Filtered.Sum(e => e.Amount).ToString("C")</strong></span>
@@ -42,14 +39,7 @@ else
                 <a href="depenses/@context.Id">@context.Label</a>
             </TemplateColumn>
             <TemplateColumn Title="Catégorie" SortBy="byCategory">
-                @if (context.Category is not null)
-                {
-                    <span class="badge" style="border-color:@context.Category.Color">@context.Category.Name</span>
-                }
-                else
-                {
-                    <span class="muted">—</span>
-                }
+                <CategoryBadge Category="context.Category" ShowEmpty="true" />
             </TemplateColumn>
             <PropertyColumn Title="Montant" Property="e => e.Amount" Format="C" Sortable="true" Align="Align.End" />
         </QuickGrid>
@@ -65,13 +55,14 @@ else
     private readonly PaginationState pagination = new() { ItemsPerPage = 20 };
 
     private readonly GridSort<Expense> byLabel = GridSort<Expense>.ByAscending(e => e.Label);
-    private readonly GridSort<Expense> byCategory = GridSort<Expense>.ByAscending(e => e.Category == null ? "" : e.Category.Name);
+    private readonly GridSort<Expense> byCategory = GridSort<Expense>.ByAscending(e => e.Category == null ? "" : e.Category.FullName);
 
     private IQueryable<Expense> Filtered => categoryFilter switch
     {
         "" => items!.AsQueryable(),
         "-1" => items!.Where(e => e.CategoryId == null).AsQueryable(),
-        var id => items!.Where(e => e.CategoryId == int.Parse(id)).AsQueryable()
+        // Une catégorie principale inclut ses sous-catégories.
+        var id => items!.Where(e => e.CategoryId == int.Parse(id) || e.Category?.ParentId == int.Parse(id)).AsQueryable()
     };
 
     protected override async Task OnInitializedAsync()

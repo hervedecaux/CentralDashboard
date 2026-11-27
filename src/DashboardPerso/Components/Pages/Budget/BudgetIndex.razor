@@ -6,7 +6,22 @@
 <header class="page-header">
     <h1>Budget</h1>
     <div class="actions">
-        <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
+        <div class="segmented">
+            <button class="@(yearView ? "" : "active")" @onclick="() => SetView(false)">Mois</button>
+            <button class="@(yearView ? "active" : "")" @onclick="() => SetView(true)">Année</button>
+        </div>
+        @if (yearView)
+        {
+            <div class="month-selector">
+                <button type="button" class="btn btn-ghost" @onclick="() => ChangeYear(-1)" title="Année précédente">‹</button>
+                <span class="month-label">@month.Year</span>
+                <button type="button" class="btn btn-ghost" @onclick="() => ChangeYear(1)" title="Année suivante">›</button>
+            </div>
+        }
+        else
+        {
+            <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
+        }
         <a class="btn btn-primary" href="budget/nouveau">+ Nouvelle catégorie</a>
     </div>
 </header>
@@ -17,54 +32,118 @@
 }
 else
 {
+    var planned = lines.Sum(l => l.Planned);
+    var spent = lines.Sum(l => l.Spent);
     <section class="cards">
         <div class="card stat">
-            <span class="stat-label">Prévu</span>
-            <span class="stat-value">@lines.Sum(l => l.Category.MonthlyBudget).ToString("C")</span>
+            <span class="stat-label">Budget annuel</span>
+            <span class="stat-value">@lines.Sum(l => l.AnnualBudget).ToString("C")</span>
+            @if (!yearView) { <span class="muted">soit @planned.ToString("C") par mois</span> }
         </div>
         <div class="card stat">
-            <span class="stat-label">Dépensé (catégorisé)</span>
-            <span class="stat-value">@lines.Sum(l => l.Spent).ToString("C")</span>
+            <span class="stat-label">Dépensé @(yearView ? $"en {month.Year}" : "ce mois")</span>
+            <span class="stat-value">@spent.ToString("C")</span>
+            @if (yearView)
+            {
+                <span class="muted">prévu à date : @PlannedToDate(planned).ToString("C")</span>
+            }
         </div>
         <div class="card stat">
-            <span class="stat-label">Reste</span>
-            <span class="stat-value @(lines.Sum(l => l.Remaining) < 0 ? "negative" : "")">@lines.Sum(l => l.Remaining).ToString("C")</span>
+            <span class="stat-label">Reste @(yearView ? "sur l'année" : "sur le mois")</span>
+            <span class="stat-value @(planned - spent < 0 ? "negative" : "")">@((planned - spent).ToString("C"))</span>
+            <ProgressBar Percent="@(planned > 0 ? (double)(spent / planned * 100) : 0)" Over="spent > planned" />
         </div>
     </section>
 
-    @* Les données sont une simple List<BudgetLine> : un TelerikGrid Data="@lines" peut remplacer ce QuickGrid. *@
+    @* Tableau en arborescence (catégorie › sous-catégories). Un TelerikTreeList pourrait le remplacer. *@
     <div class="card table-card">
-        <QuickGrid Items="lines.AsQueryable()" Class="table">
-            <TemplateColumn Title="Catégorie" SortBy="byName" IsDefaultSortColumn="true">
-                <span class="dot" style="background:@context.Category.Color"></span>
-                <a href="budget/@context.Category.Id">@context.Category.Name</a>
-            </TemplateColumn>
-            <TemplateColumn Title="Prévu / mois" SortBy="byPlanned" Align="Align.End">
-                @context.Category.MonthlyBudget.ToString("C")
-            </TemplateColumn>
-            <TemplateColumn Title="Dépensé" SortBy="bySpent" Align="Align.End">
-                @context.Spent.ToString("C")
-            </TemplateColumn>
-            <TemplateColumn Title="Reste" SortBy="byRemaining" Align="Align.End">
-                <span class="@(context.Remaining < 0 ? "negative" : "")">@context.Remaining.ToString("C")</span>
-            </TemplateColumn>
-            <TemplateColumn Title="Consommé" Class="col-progress">
-                <ProgressBar Percent="context.Percent" Color="@context.Category.Color" Over="context.IsOver" />
-            </TemplateColumn>
-        </QuickGrid>
+        <table class="table budget-tree">
+            <thead>
+                <tr>
+                    <th>Catégorie</th>
+                    <th class="col-justify-end">Budget annuel</th>
+                    <th class="col-justify-end">Prévu @(yearView ? "à date" : "/ mois")</th>
+                    <th class="col-justify-end">Dépensé</th>
+                    <th class="col-justify-end">Reste @(yearView ? "sur l'année" : "")</th>
+                    <th class="col-progress">Consommé</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in lines)
+                {
+                    @Row(line, false)
+                    @foreach (var child in line.Children)
+                    {
+                        @Row(child, true)
+                    }
+                    @if (line.Children.Count > 0 && (line.Category.AnnualBudget > 0 || line.OwnSpent > 0))
+                    {
+                        <tr class="sub muted">
+                            <td class="indent"><em>Non réparti</em></td>
+                            <td class="col-justify-end">@line.Category.AnnualBudget.ToString("C")</td>
+                            <td></td>
+                            <td class="col-justify-end">@line.OwnSpent.ToString("C")</td>
+                            <td colspan="3"></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        @if (lines.Count == 0) { <p class="muted empty">Aucune catégorie. <a href="budget/nouveau">Créer une catégorie</a></p> }
     </div>
+    <p class="muted small">
+        Les montants saisis sont <strong>annuels</strong>. En vue mensuelle, le prévu vaut budget annuel ÷ 12.
+        Le budget d'une catégorie qui a des sous-catégories est la somme de celles-ci, plus une éventuelle part « non répartie ».
+    </p>
 }
 
 @code {
     private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private bool yearView;
     private List<BudgetLine>? lines;
 
-    private readonly GridSort<BudgetLine> byName = GridSort<BudgetLine>.ByAscending(l => l.Category.Name);
-    private readonly GridSort<BudgetLine> byPlanned = GridSort<BudgetLine>.ByAscending(l => l.Category.MonthlyBudget);
-    private readonly GridSort<BudgetLine> bySpent = GridSort<BudgetLine>.ByAscending(l => l.Spent);
-    private readonly GridSort<BudgetLine> byRemaining = GridSort<BudgetLine>.ByAscending(l => l.Remaining);
+    private BudgetPeriod Period => new(month.Year, yearView ? null : month.Month);
+
+    private RenderFragment Row(BudgetLine line, bool isChild) => __builder =>
+    {
+        var plannedShown = yearView ? PlannedToDate(line.Planned) : line.Planned;
+        <tr class="@(isChild ? "sub" : line.Children.Count > 0 ? "parent" : "")">
+            <td class="@(isChild ? "indent" : "")">
+                <span class="dot" style="background:@line.Category.Color"></span>
+                <a href="budget/@line.Category.Id" title="Modifier">@line.Category.Name</a>
+            </td>
+            <td class="col-justify-end">@line.AnnualBudget.ToString("C")</td>
+            <td class="col-justify-end">@plannedShown.ToString("C")</td>
+            <td class="col-justify-end">@line.Spent.ToString("C")</td>
+            <td class="col-justify-end"><span class="@(line.Remaining < 0 ? "negative" : "")">@line.Remaining.ToString("C")</span></td>
+            <td class="col-progress"><ProgressBar Percent="line.Percent" Color="@line.Category.Color" Over="line.IsOver" /></td>
+            <td class="col-justify-end nowrap">
+                <a href="budget/@line.Category.Id" class="small">Modifier</a>
+                @if (!isChild)
+                {
+                    <span class="muted"> · </span><a href="budget/nouveau?parent=@line.Category.Id" class="small">+ sous-catégorie</a>
+                }
+            </td>
+        </tr>
+    };
+
+    private decimal PlannedToDate(decimal annual) =>
+        Math.Round(annual * Period.ElapsedFraction(DateOnly.FromDateTime(DateTime.Today)), 2);
 
     protected override Task OnInitializedAsync() => Load();
+
+    private async Task SetView(bool year)
+    {
+        yearView = year;
+        await Load();
+    }
+
+    private async Task ChangeYear(int delta)
+    {
+        month = month.AddYears(delta);
+        await Load();
+    }
 
     private async Task OnMonthChanged(DateOnly value)
     {
@@ -72,5 +151,5 @@ else
         await Load();
     }
 
-    private async Task Load() => lines = await Budget.GetMonthSummaryAsync(month.Year, month.Month);
+    private async Task Load() => lines = await Budget.GetSummaryAsync(Period);
 }

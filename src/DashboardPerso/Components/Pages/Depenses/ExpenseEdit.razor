@@ -42,10 +42,7 @@ else
                 Catégorie
                 <InputSelect @bind-Value="model.CategoryId">
                     <option value="">Sans catégorie</option>
-                    @foreach (var c in categories)
-                    {
-                        <option value="@c.Id">@c.Name</option>
-                    }
+                    <CategoryOptions Categories="categories" />
                 </InputSelect>
             </label>
 

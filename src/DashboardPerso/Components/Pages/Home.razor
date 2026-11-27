@@ -20,7 +20,12 @@ else
         <div class="card stat">
             <span class="stat-label">Dépensé ce mois-ci</span>
             <span class="stat-value">@spent.ToString("C")</span>
-            <span class="muted">sur @planned.ToString("C") prévus</span>
+            <span class="muted">sur @planned.ToString("C") prévus (budget annuel ÷ 12)</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Depuis le 1er janvier</span>
+            <span class="stat-value @(ytdSpent > ytdPlanned ? "negative" : "")">@ytdSpent.ToString("C")</span>
+            <span class="muted">prévu à date : @ytdPlanned.ToString("C")</span>
         </div>
         <div class="card stat">
             <span class="stat-label">Reste à dépenser</span>
@@ -56,7 +61,7 @@ else
                 <div class="budget-line">
                     <div class="budget-line-head">
                         <span><span class="dot" style="background:@line.Category.Color"></span>@line.Category.Name</span>
-                        <span class="muted">@line.Spent.ToString("C") / @line.Category.MonthlyBudget.ToString("C")</span>
+                        <span class="muted">@line.Spent.ToString("C") / @line.Planned.ToString("C")</span>
                     </div>
                     <ProgressBar Percent="line.Percent" Color="@line.Category.Color" Over="line.IsOver" />
                 </div>
@@ -104,7 +109,7 @@ else
                         <a href="depenses/@e.Id">@e.Label</a>
                         @if (e.Category is not null)
                         {
-                            <span class="badge" style="border-color:@e.Category.Color">@e.Category.Name</span>
+                            <CategoryBadge Category="e.Category" />
                         }
                     </span>
                     <span class="amount">@e.Amount.ToString("C")</span>
@@ -118,7 +123,7 @@ else
     private List<BudgetLine>? lines;
     private List<TaskItem>? upcoming;
     private List<Expense>? latest;
-    private decimal spent, planned;
+    private decimal spent, planned, ytdSpent, ytdPlanned;
     private int openTasks, overdueTasks;
 
     protected override async Task OnInitializedAsync()
@@ -126,7 +131,11 @@ else
         var today = DateTime.Today;
         lines = await Budget.GetMonthSummaryAsync(today.Year, today.Month);
         spent = await Expenses.GetMonthTotalAsync(today.Year, today.Month);
-        planned = lines.Sum(l => l.Category.MonthlyBudget);
+        planned = lines.Sum(l => l.Planned);
+
+        var year = await Budget.GetSummaryAsync(new BudgetPeriod(today.Year, null));
+        ytdSpent = year.Sum(l => l.Spent);
+        ytdPlanned = Math.Round(year.Sum(l => l.AnnualBudget) * new BudgetPeriod(today.Year, null).ElapsedFraction(DateOnly.FromDateTime(today)), 2);
 
         var allTasks = await Tasks.GetAllAsync();
         var open = allTasks.Where(t => t.Status != TaskItemStatus.Done).ToList();

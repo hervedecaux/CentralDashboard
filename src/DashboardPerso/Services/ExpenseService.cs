@@ -13,7 +13,7 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         var from = new DateOnly(year, month, 1);
         var to = from.AddMonths(1);
         return await db.Expenses.AsNoTracking()
-            .Include(e => e.Category)
+            .Include(e => e.Category).ThenInclude(c => c!.Parent)
             .Where(e => e.Date >= from && e.Date < to)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .ToListAsync();
@@ -23,7 +23,7 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         return await db.Expenses.AsNoTracking()
-            .Include(e => e.Category)
+            .Include(e => e.Category).ThenInclude(c => c!.Parent)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .Take(count)
             .ToListAsync();

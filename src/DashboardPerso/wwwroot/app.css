@@ -168,3 +168,12 @@ button.link:hover { text-decoration: underline; }
 .import-table select { padding: 0.3rem 0.5rem; }
 .import-table tr.excluded td { opacity: .55; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+
+/* Budget en arborescence */
+.budget-tree tr.parent td { font-weight: 600; }
+.budget-tree tr.sub td { font-size: 0.93rem; }
+.budget-tree td.indent { padding-left: 2.2rem !important; }
+.nowrap { white-space: nowrap; }
+.danger-zone { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); display: flex; flex-direction: column; gap: 0.8rem; }
+.danger-zone p { margin: 0; }
+.budget-tree td:first-child { white-space: nowrap; }
