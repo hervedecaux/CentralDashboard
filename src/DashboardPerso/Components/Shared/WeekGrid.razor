@@ -1,0 +1,132 @@
+@* Grille d'une semaine (lundi → dimanche) avec les heures en ordonnée. Cliquer dans une colonne vide ajoute un créneau. *@
+
+<div class="week-grid-scroll">
+    <div class="week-grid" style="--hour-px:@(HourPx)px; --hours:@(lastHour - firstHour)">
+        <div class="wg-corner"></div>
+        @for (var d = 0; d < 7; d++)
+        {
+            var day = d;
+            <div class="wg-day-head @(day == HighlightDay ? "today" : "")">
+                <span>@Headers[day]</span>
+                @if (OnAdd.HasDelegate)
+                {
+                    <button type="button" class="link small" title="Ajouter" @onclick="() => OnAdd.InvokeAsync((day, DefaultTime(day)))">+</button>
+                }
+            </div>
+        }
+
+        <div class="wg-hours">
+            @for (var h = firstHour; h < lastHour; h++)
+            {
+                <div class="wg-hour">@($"{h:00}:00")</div>
+            }
+        </div>
+        @for (var d = 0; d < 7; d++)
+        {
+            var day = d;
+            <div class="wg-col @(day == HighlightDay ? "today" : "")"
+                 title="@(OnAdd.HasDelegate ? "Cliquer pour ajouter une activité" : null)"
+                 @onclick="e => ColumnClick(day, e)">
+                @foreach (var p in Layout(day))
+                {
+                    var item = p.Item;
+                    <div class="wg-item @(item.Done ? "done" : "")" @key="item.Id"
+                         style="top:@Px(Minutes(item.Start)); height:@Px(Math.Max(Minutes(item.End) - Minutes(item.Start), 20)); left:calc(@(p.Left)% + 2px); width:calc(@(p.Width)% - 4px); --c:@item.Color"
+                         title="@($"{item.Start:HH\\:mm}–{item.End:HH\\:mm} · {item.Label}{(item.Sub is null ? "" : " · " + item.Sub)}")"
+                         @onclick="() => OnSelect.InvokeAsync(item.Id)" @onclick:stopPropagation>
+                        <div class="wg-item-head">
+                            @if (OnToggle.HasDelegate)
+                            {
+                                <input type="checkbox" checked="@item.Done" title="Fait"
+                                       @onclick:stopPropagation @onchange="e => OnToggle.InvokeAsync((item.Id, (bool)e.Value!))" />
+                            }
+                            <strong>@item.Label</strong>
+                        </div>
+                        <span class="wg-time">@item.Start.ToString("HH:mm")–@item.End.ToString("HH:mm")</span>
+                        @if (item.Sub is not null) { <span class="wg-sub">@item.Sub</span> }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Élément à afficher : DayIndex 0 = lundi.</summary>
+    public record Item(int Id, int DayIndex, TimeOnly Start, TimeOnly End, string Color, string Label, string? Sub = null, bool Done = false);
+
+    [Parameter, EditorRequired] public List<Item> Items { get; set; } = [];
+
+    /// <summary>Libellés des 7 colonnes (« Lun. », « lun. 24/11 »…).</summary>
+    [Parameter, EditorRequired] public string[] Headers { get; set; } = [];
+
+    /// <summary>Colonne à mettre en évidence (aujourd'hui), ou -1.</summary>
+    [Parameter] public int HighlightDay { get; set; } = -1;
+
+    [Parameter] public EventCallback<int> OnSelect { get; set; }
+    [Parameter] public EventCallback<(int Day, TimeOnly Time)> OnAdd { get; set; }
+    [Parameter] public EventCallback<(int Id, bool Done)> OnToggle { get; set; }
+
+    private const int HourPx = 44;
+    private int firstHour = 7, lastHour = 22;
+
+    protected override void OnParametersSet()
+    {
+        // Plage horaire : 7 h – 22 h, élargie si des activités débordent.
+        firstHour = Math.Min(7, Items.Count == 0 ? 7 : Items.Min(i => i.Start.Hour));
+        lastHour = Math.Max(22, Items.Count == 0 ? 22 : Items.Max(i => i.End.Minute > 0 ? i.End.Hour + 1 : Math.Max(i.End.Hour, i.Start.Hour + 1)));
+        lastHour = Math.Min(lastHour, 24);
+    }
+
+    private double Minutes(TimeOnly t) => (t.Hour - firstHour) * 60 + t.Minute;
+    private static string Px(double minutes) => $"{(minutes * HourPx / 60).ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
+
+    private TimeOnly DefaultTime(int day)
+    {
+        // Après la dernière activité du jour, sinon 9 h.
+        var last = Items.Where(i => i.DayIndex == day).Select(i => i.End).DefaultIfEmpty(new TimeOnly(9, 0)).Max();
+        return last.Hour >= 23 ? new TimeOnly(9, 0) : last;
+    }
+
+    private Task ColumnClick(int day, MouseEventArgs e)
+    {
+        if (!OnAdd.HasDelegate) return Task.CompletedTask;
+        var minutes = (int)(e.OffsetY / HourPx * 60);
+        var rounded = firstHour * 60 + minutes / 30 * 30;
+        rounded = Math.Clamp(rounded, 0, 23 * 60);
+        return OnAdd.InvokeAsync((day, new TimeOnly(rounded / 60, rounded % 60)));
+    }
+
+    private record Placed(Item Item, double Left, double Width);
+
+    /// <summary>Place côte à côte les activités qui se chevauchent.</summary>
+    private List<Placed> Layout(int day)
+    {
+        var items = Items.Where(i => i.DayIndex == day).OrderBy(i => i.Start).ThenBy(i => i.End).ToList();
+        var result = new List<Placed>();
+        var group = new List<(Item Item, int Lane)>();
+        var groupEnd = TimeOnly.MinValue;
+
+        void Flush()
+        {
+            if (group.Count == 0) return;
+            var lanes = group.Max(g => g.Lane) + 1;
+            result.AddRange(group.Select(g => new Placed(g.Item, 100.0 * g.Lane / lanes, 100.0 / lanes)));
+            group.Clear();
+        }
+
+        foreach (var item in items)
+        {
+            if (group.Count > 0 && item.Start >= groupEnd) Flush();
+            var laneEnds = new Dictionary<int, TimeOnly>();
+            foreach (var g in group)
+                laneEnds[g.Lane] = laneEnds.TryGetValue(g.Lane, out var e) && e > g.Item.End ? e : g.Item.End;
+            var lane = 0;
+            while (laneEnds.TryGetValue(lane, out var end) && end > item.Start) lane++;
+            group.Add((item, lane));
+            if (group.Count == 1 || item.End > groupEnd) groupEnd = item.End;
+        }
+        Flush();
+        return result;
+    }
+}

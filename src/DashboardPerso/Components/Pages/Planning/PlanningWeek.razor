@@ -1,0 +1,368 @@
+@page "/planning"
+@inject ActivityService Activities
+@inject TaskService Tasks
+
+<PageTitle>Planning · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <div>
+        <h1>Planning</h1>
+        <p class="muted">Vos activités de la semaine. Cliquez dans un jour pour ajouter une activité, ou sur une activité pour la modifier.</p>
+    </div>
+    <div class="actions">
+        <a class="btn btn-ghost" href="planning/semaine-type">Modifier la semaine type</a>
+        <button class="btn btn-primary" @onclick="Apply" disabled="@(slotCount == 0)"
+                title="@(slotCount == 0 ? "La semaine type est vide" : "Ajoute les créneaux de la semaine type qui ne sont pas encore dans cette semaine")">
+            Appliquer la semaine type
+        </button>
+    </div>
+</header>
+
+<div class="toolbar">
+    <div class="month-selector">
+        <button type="button" class="btn btn-ghost" @onclick="() => ChangeWeek(-7)" title="Semaine précédente">‹</button>
+        <span class="week-label">@WeekLabel</span>
+        <button type="button" class="btn btn-ghost" @onclick="() => ChangeWeek(7)" title="Semaine suivante">›</button>
+        @if (monday != ActivityService.MondayOf(Today))
+        {
+            <button type="button" class="btn btn-ghost" @onclick="ThisWeek">Cette semaine</button>
+        }
+    </div>
+    @if (items is { Count: > 0 })
+    {
+        <span>
+            @if (confirmClear)
+            {
+                <span class="confirm">
+                    Supprimer les @items.Count activités de la semaine ?
+                    <button class="btn btn-danger small" @onclick="Clear">Oui</button>
+                    <button class="btn btn-ghost small" @onclick="() => confirmClear = false">Non</button>
+                </span>
+            }
+            else
+            {
+                <button class="btn btn-ghost small danger" @onclick="() => confirmClear = true">Vider la semaine</button>
+            }
+        </span>
+    }
+</div>
+
+@if (message is not null) { <p class="positive">@message</p> }
+@if (error is not null) { <p class="negative">@error</p> }
+
+@if (items is null || categories is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    @if (categories.Count == 0)
+    {
+        <p class="muted">Aucune catégorie d'activité. <a href="activites">Créer des catégories</a></p>
+    }
+    else if (items.Count == 0 && editing is null)
+    {
+        <div class="card notice">
+            @if (slotCount > 0)
+            {
+                <span>Rien n'est encore prévu cette semaine. </span>
+                <button class="link" @onclick="Apply">Appliquer la semaine type</button>
+                <span> pour y copier vos @slotCount créneaux habituels, puis ajustez-la.</span>
+            }
+            else
+            {
+                <span>Commencez par définir votre <a href="planning/semaine-type">semaine type</a> (travail, travaux, ménage, loisirs…), puis appliquez-la à chaque semaine.</span>
+            }
+        </div>
+    }
+
+    @if (editing is not null)
+    {
+        <div class="card form-card activity-editor" style="--c:@CategoryColor(editing.CategoryId)">
+            <div class="card-header">
+                <h2>@(editing.Id == 0 ? "Nouvelle activité" : "Modifier l'activité")</h2>
+                @if (editing.SlotId is not null) { <span class="muted small">Issue de la semaine type</span> }
+            </div>
+            <form @onsubmit="Save" @onsubmit:preventDefault>
+                <div class="form-row">
+                    <label>
+                        Catégorie
+                        <select @bind="editing.CategoryId" @bind:after="LoadTasksForEditing">
+                            @foreach (var c in categories)
+                            {
+                                <option value="@c.Id">@(c.IsSubcategory ? "↳ " : "")@c.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <label>
+                        Précision (facultatif)
+                        <input @bind="editing.Title" maxlength="100" placeholder="ex. Piano, jardin, course à pied…" />
+                    </label>
+                </div>
+                <div class="form-row">
+                    <label>
+                        Jour
+                        <input type="date" @bind="editing.Date" @bind:after="LoadTasksForEditing" />
+                    </label>
+                    <label>
+                        Début
+                        <TimeField @bind-Value="editing.Start" />
+                    </label>
+                    <label>
+                        Fin
+                        <TimeField @bind-Value="editing.End" />
+                    </label>
+                </div>
+                <label>
+                    Note
+                    <textarea @bind="editing.Notes" rows="2" maxlength="500"></textarea>
+                </label>
+                <label class="inline"><input type="checkbox" @bind="editing.Done" /> Fait</label>
+
+                @if (relatedTasks.Count > 0)
+                {
+                    <div class="related-tasks">
+                        <span class="small muted">Tâches « @CategoryName(editing.CategoryId) » à faire :</span>
+                        <ul class="list task-list">
+                            @foreach (var t in relatedTasks)
+                            {
+                                <li @key="t.Id">
+                                    <span class="task-main">
+                                        <a href="taches/@t.Id">@t.Title</a>
+                                        @if (t.Priority == TaskPriority.High) { <span class="badge prio-high">Haute</span> }
+                                        @if (t.PlannedFor is { } p) { <span class="small muted">prévue le @p.ToString("d MMM")</span> }
+                                    </span>
+                                    @if (t.PlannedFor != editing.Date)
+                                    {
+                                        <button type="button" class="btn btn-ghost small" @onclick="() => PlanTask(t)">Prévoir le @editing.Date.ToString("d MMM")</button>
+                                    }
+                                    else
+                                    {
+                                        <span class="small positive">Prévue ce jour</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="button" class="btn btn-ghost" @onclick="Cancel">Annuler</button>
+                    @if (editing.Id != 0)
+                    {
+                        <span class="spacer"></span>
+                        <DeleteButton OnConfirm="Delete" />
+                    }
+                </div>
+            </form>
+        </div>
+    }
+
+    <div class="card table-card">
+        <WeekGrid Items="gridItems" Headers="headers" HighlightDay="highlight"
+                  OnSelect="Select" OnAdd="Add" OnToggle="Toggle" />
+    </div>
+
+    @if (totals.Count > 0 || templateTotals.Count > 0)
+    {
+        <div class="card">
+            <div class="card-header">
+                <h2>Temps par activité</h2>
+                <span class="muted small">fait / prévu cette semaine · semaine type</span>
+            </div>
+            @foreach (var root in categories.Where(c => c.ParentId is null))
+            {
+                var t = totals.FirstOrDefault(x => x.Category.Id == root.Id);
+                var tpl = templateTotals.FirstOrDefault(x => x.Category.Id == root.Id);
+                if (t is null && tpl is null) continue;
+                <div class="budget-line">
+                    <div class="budget-line-head">
+                        <span><span class="dot" style="background:@root.Color"></span>@root.Name</span>
+                        <span class="muted">
+                            @(t is null ? "—" : $"{ActivityService.FormatDuration(t.Done)} / {ActivityService.FormatDuration(t.Planned)}")
+                            · type : @(tpl is null ? "—" : ActivityService.FormatDuration(tpl.Planned))
+                        </span>
+                    </div>
+                    <ProgressBar Percent="@(t is null || t.Planned.TotalMinutes == 0 ? 0 : 100 * t.Done.TotalMinutes / t.Planned.TotalMinutes)" Color="@root.Color" Neutral="true" />
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Today);
+
+    [SupplyParameterFromQuery(Name = "semaine")] public string? WeekQuery { get; set; }
+
+    private DateOnly monday = ActivityService.MondayOf(DateOnly.FromDateTime(DateTime.Today));
+    private List<PlannedActivity>? items;
+    private List<ActivityCategory>? categories;
+    private List<WeekGrid.Item> gridItems = [];
+    private List<ActivityTotal> totals = [];
+    private List<ActivityTotal> templateTotals = [];
+    private List<TaskItem> relatedTasks = [];
+    private string[] headers = [];
+    private int highlight = -1;
+    private int slotCount;
+    private PlannedActivity? editing;
+    private bool confirmClear;
+    private string? message, error;
+
+    private string WeekLabel
+    {
+        get
+        {
+            var sunday = monday.AddDays(6);
+            return monday.Month == sunday.Month
+                ? $"Semaine du {monday.Day} au {sunday:d MMMM yyyy}"
+                : $"Semaine du {monday:d MMMM} au {sunday:d MMMM yyyy}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DateOnly.TryParse(WeekQuery, out var d)) monday = ActivityService.MondayOf(d);
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        categories = await Activities.GetCategoriesAsync();
+        items = await Activities.GetWeekAsync(monday);
+        var slots = await Activities.GetSlotsAsync();
+        slotCount = slots.Count;
+        headers = Enumerable.Range(0, 7).Select(i => monday.AddDays(i).ToString("ddd d/MM")).ToArray();
+        highlight = Today >= monday && Today < monday.AddDays(7) ? Today.DayNumber - monday.DayNumber : -1;
+        gridItems = items.Select(a => new WeekGrid.Item(a.Id, a.Date.DayNumber - monday.DayNumber, a.Start, a.End,
+            a.Category!.Color, a.Title ?? a.Category.Name, a.Title is null ? a.Category.Parent?.Name : a.Category.Name, a.Done)).ToList();
+        totals = ActivityService.Totals(items.Select(a => (a.Category!, a.Start, a.End, a.Done)), categories);
+        templateTotals = ActivityService.Totals(slots.Select(s => (s.Category!, s.Start, s.End, false)), categories);
+    }
+
+    private async Task ChangeWeek(int days)
+    {
+        monday = monday.AddDays(days);
+        await Reset();
+    }
+
+    private async Task ThisWeek()
+    {
+        monday = ActivityService.MondayOf(Today);
+        await Reset();
+    }
+
+    private async Task Reset()
+    {
+        editing = null;
+        confirmClear = false;
+        message = error = null;
+        await Load();
+    }
+
+    private async Task Apply()
+    {
+        message = error = null;
+        var n = await Activities.ApplyTemplateAsync(monday);
+        message = n == 0 ? "Tous les créneaux de la semaine type sont déjà dans cette semaine." : $"{n} activité(s) ajoutée(s) depuis la semaine type.";
+        await Load();
+    }
+
+    private async Task Clear()
+    {
+        var n = await Activities.ClearWeekAsync(monday);
+        confirmClear = false;
+        editing = null;
+        message = $"{n} activité(s) supprimée(s).";
+        await Load();
+    }
+
+    private async Task Select(int id)
+    {
+        var a = items!.First(x => x.Id == id);
+        message = error = null;
+        editing = new PlannedActivity
+        {
+            Id = a.Id, Date = a.Date, Start = a.Start, End = a.End, CategoryId = a.CategoryId,
+            Title = a.Title, Notes = a.Notes, Done = a.Done, SlotId = a.SlotId,
+        };
+        await LoadTasksForEditing();
+    }
+
+    private async Task Add((int Day, TimeOnly Time) at)
+    {
+        if (categories is not { Count: > 0 }) return;
+        message = error = null;
+        var end = at.Time.Hour >= 23 ? new TimeOnly(23, 59) : at.Time.AddHours(1);
+        editing = new PlannedActivity
+        {
+            Date = monday.AddDays(at.Day), Start = at.Time, End = end,
+            CategoryId = editing?.CategoryId ?? categories[0].Id,
+        };
+        await LoadTasksForEditing();
+    }
+
+    private async Task LoadTasksForEditing()
+    {
+        relatedTasks = editing is null || categories is null
+            ? []
+            : await Tasks.GetOpenForActivityAsync(RelatedIds(editing.CategoryId));
+    }
+
+    /// <summary>La catégorie, sa catégorie principale et ses sous-catégories.</summary>
+    private List<int> RelatedIds(int categoryId)
+    {
+        var c = categories!.FirstOrDefault(x => x.Id == categoryId);
+        if (c is null) return [];
+        var ids = new List<int> { c.Id };
+        if (c.ParentId is { } p) ids.Add(p);
+        ids.AddRange(categories!.Where(x => x.ParentId == c.Id).Select(x => x.Id));
+        return ids;
+    }
+
+    private async Task PlanTask(TaskItem t)
+    {
+        await Tasks.PlanAsync(t.Id, editing!.Date);
+        await LoadTasksForEditing();
+    }
+
+    private async Task Save()
+    {
+        error = null;
+        try
+        {
+            await Activities.SaveActivityAsync(editing!);
+            message = "Activité enregistrée.";
+            editing = null;
+            await Load();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void Cancel()
+    {
+        editing = null;
+        error = null;
+    }
+
+    private async Task Delete()
+    {
+        await Activities.DeleteActivityAsync(editing!.Id);
+        editing = null;
+        message = "Activité supprimée.";
+        await Load();
+    }
+
+    private async Task Toggle((int Id, bool Done) e)
+    {
+        await Activities.SetDoneAsync(e.Id, e.Done);
+        await Load();
+    }
+
+    private string CategoryColor(int id) => categories?.FirstOrDefault(c => c.Id == id)?.Color ?? "#4f6bed";
+    private string CategoryName(int id) => categories?.FirstOrDefault(c => c.Id == id)?.Name ?? "";
+}

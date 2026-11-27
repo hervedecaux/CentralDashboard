@@ -1,0 +1,211 @@
+@page "/activites"
+@inject ActivityService Activities
+
+<PageTitle>Catégories d'activités · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Catégories d'activités</h1>
+    <div class="actions">
+        <a class="btn btn-ghost" href="planning/semaine-type">Semaine type</a>
+    </div>
+</header>
+
+<p class="muted">
+    Les catégories servent à classer les créneaux du planning (et, si vous le souhaitez, vos tâches).
+    Une catégorie peut avoir des sous-catégories : Loisirs › Sport, Musique, Lecture, Photo.
+</p>
+
+@if (message is not null) { <p class="positive">@message</p> }
+@if (error is not null) { <p class="negative">@error</p> }
+
+@if (categories is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    <div class="card">
+        <form class="rule-draft plain" @onsubmit="Add" @onsubmit:preventDefault>
+            <input @bind="newName" @bind:event="oninput" placeholder="Nouvelle catégorie (ex. Jardinage)" maxlength="80" />
+            <select @bind="newParent">
+                <option value="">catégorie principale</option>
+                @foreach (var c in categories.Where(c => c.ParentId is null))
+                {
+                    <option value="@c.Id">sous-catégorie de @c.Name</option>
+                }
+            </select>
+            <input type="color" @bind="newColor" title="Couleur" />
+            <button type="submit" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(newName)">Ajouter</button>
+        </form>
+    </div>
+
+    <div class="card table-card">
+        <table class="table categories">
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th class="col-justify-end">Semaine type</th>
+                    <th class="col-justify-end">Activités prévues</th>
+                    <th class="col-justify-end">Tâches</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in categories)
+                {
+                    var u = usage.GetValueOrDefault(c.Id);
+                    var children = categories.Count(x => x.ParentId == c.Id);
+                    <tr @key="c.Id">
+                        <td class="@(c.IsSubcategory ? "indent" : "")">
+                            @if (edit is not null && edit.Id == c.Id)
+                            {
+                                <form class="inline-edit" @onsubmit="SaveEdit" @onsubmit:preventDefault>
+                                    <input type="color" @bind="edit.Color" title="Couleur" />
+                                    <input @bind="edit.Name" @bind:event="oninput" maxlength="80" autofocus />
+                                    @if (children == 0)
+                                    {
+                                        <select @bind="editParent">
+                                            <option value="">catégorie principale</option>
+                                            @foreach (var p in categories.Where(x => x.ParentId is null && x.Id != c.Id))
+                                            {
+                                                <option value="@p.Id">sous-catégorie de @p.Name</option>
+                                            }
+                                        </select>
+                                    }
+                                    <button type="submit" class="btn btn-primary small" disabled="@string.IsNullOrWhiteSpace(edit.Name)">OK</button>
+                                    <button type="button" class="btn btn-ghost small" @onclick="() => edit = null">Annuler</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <span class="dot" style="background:@c.Color"></span>@(c.IsSubcategory ? "↳ " : "")@c.Name
+                            }
+                        </td>
+                        <td class="col-justify-end">@u.Slots</td>
+                        <td class="col-justify-end">@u.Activities</td>
+                        <td class="col-justify-end">@u.Tasks</td>
+                        <td class="col-justify-end nowrap">
+                            <button class="link small" @onclick="() => StartEdit(c)">Modifier</button>
+                            <span class="muted"> · </span>
+                            @if (children > 0)
+                            {
+                                <span class="muted small" title="Supprimez ou déplacez d'abord ses sous-catégories">@children sous-catégorie(s)</span>
+                            }
+                            else
+                            {
+                                <button class="link small danger" @onclick="() => StartDelete(c)">Supprimer</button>
+                            }
+                        </td>
+                    </tr>
+                    @if (deleting == c.Id)
+                    {
+                        <tr class="delete-row">
+                            <td colspan="5">
+                                <div class="delete-box">
+                                    <strong>Supprimer « @c.Name » ?</strong>
+                                    @if (u.Slots + u.Activities + u.Tasks > 0)
+                                    {
+                                        <span class="muted">@u.Slots créneau(x), @u.Activities activité(s), @u.Tasks tâche(s) :</span>
+                                        <select @bind="reassignTo">
+                                            <option value="">supprimer les créneaux et activités (les tâches sont gardées)</option>
+                                            @foreach (var o in categories.Where(x => x.Id != c.Id))
+                                            {
+                                                <option value="@o.Id">rattacher à @o.FullName</option>
+                                            }
+                                        </select>
+                                    }
+                                    <button class="btn btn-danger small" @onclick="() => Delete(c)">Supprimer</button>
+                                    <button class="btn btn-ghost small" @onclick="() => deleting = null">Annuler</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        @if (categories.Count == 0) { <p class="muted empty">Aucune catégorie.</p> }
+    </div>
+}
+
+@code {
+    private List<ActivityCategory>? categories;
+    private Dictionary<int, (int Slots, int Activities, int Tasks)> usage = [];
+    private string newName = "";
+    private string newParent = "";
+    private string newColor = "#4f6bed";
+    private ActivityCategory? edit;
+    private string editParent = "";
+    private int? deleting;
+    private string reassignTo = "";
+    private string? message, error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        categories = await Activities.GetCategoriesAsync();
+        usage = await Activities.GetUsageAsync();
+    }
+
+    private async Task Add()
+    {
+        await Run(async () =>
+        {
+            var c = new ActivityCategory { Name = newName, Color = newColor, ParentId = int.TryParse(newParent, out var p) ? p : null };
+            await Activities.SaveCategoryAsync(c);
+            message = $"« {c.Name} » ajoutée.";
+            newName = "";
+        });
+    }
+
+    private void StartEdit(ActivityCategory c)
+    {
+        edit = new ActivityCategory { Id = c.Id, Name = c.Name, Color = c.Color, ParentId = c.ParentId, SortOrder = c.SortOrder };
+        editParent = c.ParentId?.ToString() ?? "";
+        deleting = null;
+        error = message = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        await Run(async () =>
+        {
+            edit!.ParentId = int.TryParse(editParent, out var p) ? p : null;
+            await Activities.SaveCategoryAsync(edit);
+            message = $"« {edit.Name} » enregistrée.";
+            edit = null;
+        });
+    }
+
+    private void StartDelete(ActivityCategory c)
+    {
+        deleting = c.Id;
+        edit = null;
+        reassignTo = "";
+        error = message = null;
+    }
+
+    private async Task Delete(ActivityCategory c)
+    {
+        await Run(async () =>
+        {
+            await Activities.DeleteCategoryAsync(c.Id, int.TryParse(reassignTo, out var t) ? t : null);
+            message = $"« {c.Name} » supprimée.";
+            deleting = null;
+        });
+    }
+
+    private async Task Run(Func<Task> action)
+    {
+        error = message = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            error = ex.InnerException?.Message ?? ex.Message;
+        }
+        await Load();
+    }
+}

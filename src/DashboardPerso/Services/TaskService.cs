@@ -63,6 +63,16 @@ public class TaskService(IDbContextFactory<AppDbContext> dbFactory)
             .ToListAsync());
     }
 
+    /// <summary>Tâches non terminées rattachées à l'une des catégories d'activité données.</summary>
+    public async Task<List<TaskItem>> GetOpenForActivityAsync(IReadOnlyCollection<int> categoryIds)
+    {
+        if (categoryIds.Count == 0) return [];
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return Sort(await db.Tasks.AsNoTracking()
+            .Where(t => t.Status != TaskItemStatus.Done && t.ActivityCategoryId != null && categoryIds.Contains(t.ActivityCategoryId.Value))
+            .ToListAsync());
+    }
+
     /// <summary>Prévoit la tâche pour un jour (null : la retire des listes du jour).</summary>
     public async Task PlanAsync(int id, DateOnly? day)
     {

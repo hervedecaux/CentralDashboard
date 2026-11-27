@@ -1,0 +1,212 @@
+@page "/planning/semaine-type"
+@inject ActivityService Activities
+
+<PageTitle>Semaine type · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <div>
+        <h1>Semaine type</h1>
+        <p class="muted">
+            Vos créneaux habituels, qui se répètent chaque semaine. Dans le <a href="planning">planning</a>,
+            « Appliquer la semaine type » les copie dans une semaine précise, que vous ajustez ensuite librement.
+            Modifier la semaine type ne change pas les semaines déjà planifiées.
+        </p>
+    </div>
+    <div class="actions">
+        <a class="btn btn-ghost" href="activites">Catégories d'activités</a>
+        <button class="btn btn-primary" @onclick="() => Add((0, new TimeOnly(9, 0)))" disabled="@(categories is not { Count: > 0 })">+ Nouveau créneau</button>
+    </div>
+</header>
+
+@if (message is not null) { <p class="positive">@message</p> }
+@if (error is not null) { <p class="negative">@error</p> }
+
+@if (slots is null || categories is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    @if (categories.Count == 0)
+    {
+        <p class="muted">Aucune catégorie d'activité. <a href="activites">Créer des catégories</a></p>
+    }
+
+    @if (editing is not null)
+    {
+        <div class="card form-card activity-editor" style="--c:@(categories.FirstOrDefault(c => c.Id == editing.CategoryId)?.Color)">
+            <div class="card-header">
+                <h2>@(editing.Id == 0 ? "Nouveau créneau" : "Modifier le créneau")</h2>
+            </div>
+            <form @onsubmit="Save" @onsubmit:preventDefault>
+                <div class="form-row">
+                    <label>
+                        Catégorie
+                        <select @bind="editing.CategoryId">
+                            @foreach (var c in categories)
+                            {
+                                <option value="@c.Id">@(c.IsSubcategory ? "↳ " : "")@c.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <label>
+                        Précision (facultatif)
+                        <input @bind="editing.Title" maxlength="100" placeholder="ex. Piano, jardin, course à pied…" />
+                    </label>
+                </div>
+                <div class="field">
+                    <span>@(editing.Id == 0 ? "Jours" : "Jour")</span>
+                    <div class="day-picker">
+                        @for (var i = 0; i < 7; i++)
+                        {
+                            var day = ActivityService.DayFromIndex(i);
+                            <button type="button" class="@(selectedDays.Contains(day) ? "active" : "")" @onclick="() => ToggleDay(day)">@DayNames[i]</button>
+                        }
+                    </div>
+                    @if (editing.Id == 0)
+                    {
+                        <span class="muted small">
+                            Choisissez plusieurs jours pour répéter le créneau :
+                            <button type="button" class="link small" @onclick="() => SetDays(0, 5)">lundi → vendredi</button> ·
+                            <button type="button" class="link small" @onclick="() => SetDays(5, 2)">week-end</button> ·
+                            <button type="button" class="link small" @onclick="() => SetDays(0, 7)">tous les jours</button>
+                        </span>
+                    }
+                </div>
+                <div class="form-row">
+                    <label>
+                        Début
+                        <TimeField @bind-Value="editing.Start" />
+                    </label>
+                    <label>
+                        Fin
+                        <TimeField @bind-Value="editing.End" />
+                    </label>
+                </div>
+                <label>
+                    Note
+                    <textarea @bind="editing.Notes" rows="2" maxlength="500"></textarea>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" disabled="@(selectedDays.Count == 0)">Enregistrer</button>
+                    <button type="button" class="btn btn-ghost" @onclick="() => editing = null">Annuler</button>
+                    @if (editing.Id != 0)
+                    {
+                        <span class="spacer"></span>
+                        <DeleteButton OnConfirm="Delete" />
+                    }
+                </div>
+            </form>
+        </div>
+    }
+
+    <div class="card table-card">
+        <WeekGrid Items="gridItems" Headers="DayNames" OnSelect="Select" OnAdd="Add" />
+    </div>
+
+    @if (totals.Count > 0)
+    {
+        <div class="card">
+            <div class="card-header">
+                <h2>Temps par semaine</h2>
+                <span class="muted small">total : @ActivityService.FormatDuration(TimeSpan.FromMinutes(totals.Sum(t => t.Planned.TotalMinutes)))</span>
+            </div>
+            @{ var max = totals.Max(t => t.Planned.TotalMinutes); }
+            @foreach (var t in totals)
+            {
+                <div class="budget-line">
+                    <div class="budget-line-head">
+                        <span><span class="dot" style="background:@t.Category.Color"></span>@t.Category.Name</span>
+                        <span class="muted">@ActivityService.FormatDuration(t.Planned)</span>
+                    </div>
+                    <ProgressBar Percent="@(100 * t.Planned.TotalMinutes / max)" Color="@t.Category.Color" Neutral="true" />
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private static readonly string[] DayNames = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+    private List<WeeklySlot>? slots;
+    private List<ActivityCategory>? categories;
+    private List<WeekGrid.Item> gridItems = [];
+    private List<ActivityTotal> totals = [];
+    private WeeklySlot? editing;
+    private HashSet<DayOfWeek> selectedDays = [];
+    private string? message, error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        categories = await Activities.GetCategoriesAsync();
+        slots = await Activities.GetSlotsAsync();
+        gridItems = slots.Select(s => new WeekGrid.Item(s.Id, ActivityService.DayIndex(s.Day), s.Start, s.End,
+            s.Category!.Color, s.Title ?? s.Category.Name, s.Title is null ? s.Category.Parent?.Name : s.Category.Name)).ToList();
+        totals = ActivityService.Totals(slots.Select(s => (s.Category!, s.Start, s.End, false)), categories);
+    }
+
+    private void Select(int id)
+    {
+        var s = slots!.First(x => x.Id == id);
+        message = error = null;
+        editing = new WeeklySlot
+        {
+            Id = s.Id, Day = s.Day, Start = s.Start, End = s.End, CategoryId = s.CategoryId, Title = s.Title, Notes = s.Notes,
+        };
+        selectedDays = [s.Day];
+    }
+
+    private void Add((int Day, TimeOnly Time) at)
+    {
+        if (categories is not { Count: > 0 }) return;
+        message = error = null;
+        var day = ActivityService.DayFromIndex(at.Day);
+        editing = new WeeklySlot
+        {
+            Day = day, Start = at.Time, End = at.Time.Hour >= 23 ? new TimeOnly(23, 59) : at.Time.AddHours(1),
+            CategoryId = editing?.CategoryId ?? categories[0].Id,
+        };
+        selectedDays = [day];
+    }
+
+    private void ToggleDay(DayOfWeek day)
+    {
+        if (editing!.Id != 0)
+        {
+            selectedDays = [day];   // un créneau existant n'a qu'un jour
+            return;
+        }
+        if (!selectedDays.Remove(day)) selectedDays.Add(day);
+    }
+
+    private void SetDays(int from, int count) =>
+        selectedDays = Enumerable.Range(from, count).Select(ActivityService.DayFromIndex).ToHashSet();
+
+    private async Task Save()
+    {
+        error = null;
+        try
+        {
+            editing!.Day = selectedDays.OrderBy(ActivityService.DayIndex).First();
+            await Activities.SaveSlotAsync(editing, editing.Id == 0 ? selectedDays : null);
+            message = editing.Id == 0 && selectedDays.Count > 1 ? $"{selectedDays.Count} créneaux ajoutés." : "Créneau enregistré.";
+            editing = null;
+            await Load();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task Delete()
+    {
+        await Activities.DeleteSlotAsync(editing!.Id);
+        editing = null;
+        message = "Créneau supprimé.";
+        await Load();
+    }
+}
