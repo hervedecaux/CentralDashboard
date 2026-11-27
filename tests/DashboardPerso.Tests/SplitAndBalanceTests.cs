@@ -111,4 +111,15 @@ public sealed class SplitAndBalanceTests : IDisposable
         Assert.Equal(2050m, b.TheoreticalAtBankDate);       // au 10/03 : sans les courses du 20
         Assert.Equal(-10m, b.Difference);                   // la banque indique 2040
     }
+
+    [Fact]
+    public async Task La_vue_annee_liste_toutes_les_operations_de_l_annee()
+    {
+        foreach (var d in new[] { new DateOnly(2025, 12, 31), new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 15), new DateOnly(2026, 12, 31), new DateOnly(2027, 1, 1) })
+            await expenses.SaveAsync(new Expense { Date = d, Label = d.ToString("O"), Amount = 10m });
+
+        var year = await expenses.GetByYearAsync(2026);
+        Assert.Equal([new DateOnly(2026, 12, 31), new DateOnly(2026, 6, 15), new DateOnly(2026, 1, 1)], year.Select(e => e.Date));
+        Assert.Single(await expenses.GetByMonthAsync(2026, 6));
+    }
 }

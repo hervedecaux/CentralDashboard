@@ -8,7 +8,22 @@
 <header class="page-header">
     <h1>Dépenses</h1>
     <div class="actions">
-        <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
+        <div class="segmented">
+            <button class="@(yearView ? "" : "active")" @onclick="() => SetView(false)">Mois</button>
+            <button class="@(yearView ? "active" : "")" @onclick="() => SetView(true)">Année</button>
+        </div>
+        @if (yearView)
+        {
+            <div class="month-selector">
+                <button type="button" class="btn btn-ghost" @onclick="() => ChangeYear(-1)" title="Année précédente">‹</button>
+                <span class="month-label">@month.Year</span>
+                <button type="button" class="btn btn-ghost" @onclick="() => ChangeYear(1)" title="Année suivante">›</button>
+            </div>
+        }
+        else
+        {
+            <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
+        }
         <a class="btn btn-ghost" href="depenses/import">Importer un relevé</a>
         <a class="btn btn-primary" href="@(accountFilter is { } acc ? $"depenses/nouvelle?compte={acc}" : "depenses/nouvelle")">+ Nouvelle dépense</a>
     </div>
@@ -109,6 +124,9 @@ else
 @code {
     private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private List<Expense>? items;
+    [SupplyParameterFromQuery(Name = "vue")] public string? ViewQuery { get; set; }
+    /// <summary>Vue « Année » : toutes les opérations de l'année du mois sélectionné.</summary>
+    private bool yearView;
     private List<BudgetCategory> categories = [];
     private List<Account> accounts = [];
     [SupplyParameterFromQuery(Name = "compte")] public int? AccountQuery { get; set; }
@@ -156,6 +174,7 @@ else
         categories = await Budget.GetCategoriesAsync();
         accounts = await Accounts.GetAllAsync();
         accountFilter = accounts.Any(a => a.Id == AccountQuery) ? AccountQuery : null;
+        yearView = ViewQuery == "annee";
         await Load();
     }
 
@@ -172,5 +191,30 @@ else
         await pagination.SetCurrentPageIndexAsync(0);
     }
 
-    private async Task Load() => items = await Expenses.GetByMonthAsync(month.Year, month.Month);
+    private async Task SetView(bool year)
+    {
+        if (yearView == year) return;
+        yearView = year;
+        await Reload();
+    }
+
+    private async Task ChangeYear(int delta)
+    {
+        month = month.AddYears(delta);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        await Load();
+        await pagination.SetCurrentPageIndexAsync(0);
+    }
+
+    private async Task Load()
+    {
+        pagination.ItemsPerPage = yearView ? 50 : 20;
+        items = yearView
+            ? await Expenses.GetByYearAsync(month.Year)
+            : await Expenses.GetByMonthAsync(month.Year, month.Month);
+    }
 }

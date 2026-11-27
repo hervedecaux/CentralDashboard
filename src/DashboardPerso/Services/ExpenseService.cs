@@ -7,11 +7,18 @@ namespace DashboardPerso.Services;
 public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
 {
     /// <summary>Dépenses d'un mois, les plus récentes d'abord.</summary>
-    public async Task<List<Expense>> GetByMonthAsync(int year, int month)
+    public Task<List<Expense>> GetByMonthAsync(int year, int month) =>
+        GetByPeriodAsync(new BudgetPeriod(year, month));
+
+    /// <summary>Dépenses d'une année entière, les plus récentes d'abord.</summary>
+    public Task<List<Expense>> GetByYearAsync(int year) => GetByPeriodAsync(new BudgetPeriod(year, null));
+
+    /// <summary>Dépenses de la période (un mois ou une année), les plus récentes d'abord.</summary>
+    public async Task<List<Expense>> GetByPeriodAsync(BudgetPeriod period)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        var from = new DateOnly(year, month, 1);
-        var to = from.AddMonths(1);
+        var from = period.From;
+        var to = period.To;
         return await db.Expenses.AsNoTracking()
             .Include(e => e.Category).ThenInclude(c => c!.Parent)
             .Include(e => e.Account)

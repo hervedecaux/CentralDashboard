@@ -55,7 +55,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 |---|---|
 | **Accueil** (`/`) | Dépensé ce mois-ci vs prévu, reste à dépenser, tâches ouvertes et en retard, budget par catégorie, prochaines tâches, dernières dépenses. |
 | **Budget** (`/budget`) | Catégories et sous-catégories (ex. Automobile › Carburant, Assurance, Entretien), budget **annuel**, vue par mois (annuel ÷ 12) ou par année (avec le prévu à date). |
-| **Dépenses** (`/depenses`) | Liste par mois, une vue par provenance (compte, chaque carte), filtre par catégorie, transferts affichables ou masqués, tri, pagination, total. Ajout, modification, suppression. |
+| **Dépenses** (`/depenses`) | Liste par mois ou par année (bouton Mois / Année, ou `/depenses?vue=annee`), une vue par provenance (compte, chaque carte), filtre par catégorie, transferts affichables ou masqués, tri, pagination, total. Ajout, modification, suppression. |
 | **Import** (`/depenses/import`) | Import du relevé CSV du Crédit Agricole : aperçu, catégories proposées par des règles, doublons écartés. |
 | **Tâches** (`/taches`) | Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
 
