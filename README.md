@@ -87,6 +87,10 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 - **Recettes** : le choix Dépense / Recette se fait en haut de la fiche. Les recettes s'affichent en vert avec un « + » dans la liste. Voir la section Recettes pour leur suivi dans le budget.
 - **Solde théorique** : dans **Comptes et cartes**, saisissez le solde du compte courant à une date (fin de journée). Le solde théorique = ce solde + recettes − dépenses et transferts du compte courant postérieurs. Il est comparé au solde indiqué par la banque dans le dernier relevé importé, et affiché sur l'accueil. Un écart signale en général des opérations manquantes.
 
+## Effacer les opérations importées
+
+**Réglages › Données** (`/donnees`) efface les opérations venues d'un relevé, pour toutes les opérations ou pour un compte / une carte et/ou une période. Un aperçu indique le nombre et les montants concernés, et il faut taper « EFFACER » pour confirmer. Catégories, budgets, règles, bénéficiaires, comptes, solde initial et saisies manuelles sont conservés. Les opérations effacées peuvent ensuite être réimportées.
+
 ## Importer un relevé bancaire (Crédit Agricole)
 
 1. Sur le site du Crédit Agricole, téléchargez la liste des opérations du compte au format **CSV**.
