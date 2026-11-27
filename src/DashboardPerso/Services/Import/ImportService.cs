@@ -69,9 +69,14 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         Dictionary<string, (int? CategoryId, bool IsTransfer)> Payees,
         HashSet<int> IncomeCategoryIds)
     {
-        /// <summary>Vrai si la catégorie convient au sens de l'opération (recette ↔ catégorie de recettes).</summary>
+        /// <summary>
+        /// Vrai si la catégorie convient au sens de l'opération : une dépense ne va que dans une catégorie de dépenses ;
+        /// un crédit va dans une catégorie de recettes, ou dans une catégorie de dépenses (remboursement).
+        /// </summary>
         public bool Fits(int? categoryId, bool isIncome) =>
-            categoryId is { } id && IncomeCategoryIds.Contains(id) == isIncome;
+            categoryId is { } id && (isIncome || !IncomeCategoryIds.Contains(id));
+
+        public bool IsIncomeCategory(int? categoryId) => categoryId is { } id && IncomeCategoryIds.Contains(id);
     }
 
     public async Task<List<ImportRow>> PreviewAsync(byte[] content) => (await PreviewStatementAsync(content)).Rows;
@@ -168,8 +173,8 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
                 Date = row.Operation.Date,
                 Label = Truncate(string.IsNullOrWhiteSpace(row.Label) ? row.Operation.Description : row.Label, 120),
                 Amount = row.Operation.Amount,
-                // Catégorie gardée seulement si elle correspond au sens de l'opération.
-                CategoryId = row.IsTransfer || row.CategoryId is not { } cat || incomeCategories.Contains(cat) != row.IsIncome
+                                // Une dépense ne garde pas une catégorie de recettes ; un crédit accepte les deux (remboursement).
+                CategoryId = row.IsTransfer || row.CategoryId is not { } cat || (!row.IsIncome && incomeCategories.Contains(cat))
                     ? null : row.CategoryId,
                 IsTransfer = row.IsTransfer,
                 IsIncome = row.IsIncome,
@@ -285,8 +290,12 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             row.FromPayeeDefault = true;
             return;
         }
-        var rule = FindRule(defaults.Rules.Where(r => r.MarkAsTransfer || defaults.Fits(r.CategoryId, row.IsIncome)),
-            row.Operation);
+        var candidates = defaults.Rules.Where(r => r.MarkAsTransfer || defaults.Fits(r.CategoryId, row.IsIncome));
+        // À longueur de motif égale, un crédit préfère une catégorie de recettes à un remboursement.
+        if (row.IsIncome)
+            candidates = candidates.OrderByDescending(r => r.Normalized.Length)
+                .ThenByDescending(r => defaults.IsIncomeCategory(r.CategoryId));
+        var rule = FindRule(candidates, row.Operation);
         row.IsTransfer = rule?.MarkAsTransfer ?? false;
         row.CategoryId = rule is { MarkAsTransfer: false } ? rule.CategoryId : null;
         row.MatchedRule = rule?.Pattern;

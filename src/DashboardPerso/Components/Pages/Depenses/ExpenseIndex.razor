@@ -63,11 +63,20 @@ else
             <label class="inline"><input type="checkbox" @bind="showIncome" /> Recettes</label>
         </div>
         <span class="muted">
-            @{ var spent = Filtered.Where(e => !e.IsTransfer && !e.IsIncome); }
+            @{
+                var spent = Filtered.Where(e => !e.IsTransfer && !e.IsIncome);
+                var credits = Filtered.Where(e => e.IsIncome && !e.IsTransfer).ToList();
+                var refunds = RefundAmount(credits);
+                var income = CategoryAmount(credits) - refunds;
+            }
             @spent.Count() dépense(s) · total <strong>@CategoryAmount(spent).ToString("C")</strong>
-            @if (showIncome && Filtered.Any(e => e.IsIncome && !e.IsTransfer))
+            @if (refunds != 0)
             {
-                <span> · recettes <span class="positive">@CategoryAmount(Filtered.Where(e => e.IsIncome && !e.IsTransfer)).ToString("C")</span></span>
+                <span> · remboursements <span class="positive">@refunds.ToString("C")</span> · net <strong>@((CategoryAmount(spent) - refunds).ToString("C"))</strong></span>
+            }
+            @if (income != 0)
+            {
+                <span> · recettes <span class="positive">@income.ToString("C")</span></span>
             }
             @if (showTransfers && Filtered.Any(e => e.IsTransfer))
             {
@@ -101,11 +110,19 @@ else
                 }
                 else if (context.IsSplit)
                 {
+                    @if (context.IsIncome && context.Splits.Any(x => x.Category is { IsIncome: false }))
+                    {
+                        <span class="badge income" title="Crédit déduit des dépenses de sa catégorie">Remboursement</span>
+                    }
                     <span class="badge split" title="@string.Join(" + ", context.Splits.Select(x => $"{x.Category?.Name ?? "Sans catégorie"} {x.Amount:C}"))">Ventilée · @context.Splits.Count catégories</span>
                 }
                 else
                 {
                     <CategoryBadge Category="context.Category" ShowEmpty="true" />
+                    @if (context.IsIncome && context.Category is { IsIncome: false })
+                    {
+                        <span class="badge income" title="Crédit déduit des dépenses de cette catégorie">Remboursement</span>
+                    }
                 }
             </TemplateColumn>
             <TemplateColumn Title="Montant" SortBy="byAmount" Align="Align.End">
@@ -171,6 +188,15 @@ else
     {
         if (!int.TryParse(categoryFilter, out var id) || id < 0) return expenses.Sum(e => e.Amount);
         return expenses.Sum(e => e.IsSplit ? e.Splits.Where(x => InCategory(x.Category, id)).Sum(x => x.Amount) : e.Amount);
+    }
+
+    /// <summary>Part des crédits classée dans des catégories de dépenses (remboursements), filtre de catégorie compris.</summary>
+    private decimal RefundAmount(IEnumerable<Expense> credits)
+    {
+        int.TryParse(categoryFilter, out var id);
+        bool Match(BudgetCategory? c) => c is { IsIncome: false } && (id <= 0 || InCategory(c, id));
+        return credits.Sum(e => e.IsSplit ? e.Splits.Where(x => Match(x.Category)).Sum(x => x.Amount)
+                                          : Match(e.Category) ? e.Amount : 0);
     }
 
     protected override async Task OnInitializedAsync()

@@ -88,9 +88,10 @@ public class PayeeService(IDbContextFactory<AppDbContext> dbFactory)
             return await query.ExecuteUpdateAsync(s => s.SetProperty(e => e.IsTransfer, true));
         if (payee.DefaultCategoryId is { } cat)
         {
-            // Une catégorie de recettes ne s'applique qu'aux recettes, et inversement.
+            // Une catégorie de recettes ne s'applique qu'aux crédits ; une catégorie de dépenses aux dépenses
+            // et aux crédits (remboursements).
             var income = await db.BudgetCategories.Where(c => c.Id == cat).Select(c => c.Kind).FirstAsync() == CategoryKind.Income;
-            return await query.Where(e => e.IsIncome == income)
+            return await query.Where(e => e.IsIncome || !income)
                 .ExecuteUpdateAsync(s => s.SetProperty(e => e.CategoryId, cat));
         }
         return 0;

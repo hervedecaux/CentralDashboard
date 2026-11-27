@@ -46,6 +46,7 @@ else
             <span class="stat-label">Dépenses @(yearView ? $"en {month.Year}" : "ce mois")</span>
             <span class="stat-value">@o.ActualExpenses.ToString("C")</span>
             <span class="muted">prévu @(yearView ? "à date" : "") : @Shown(planned).ToString("C")</span>
+            @if (o.Refunds != 0) { <span class="muted small">remboursements déduits : @o.Refunds.ToString("C")</span> }
         </div>
         <div class="card stat">
             <span class="stat-label">Solde recettes − dépenses</span>
@@ -235,7 +236,8 @@ else
     <p class="muted small">
         Les montants saisis sont <strong>annuels</strong>. En vue mensuelle, le prévu vaut montant annuel ÷ 12.
         Le montant d'une catégorie qui a des sous-catégories est la somme de celles-ci, plus une éventuelle part « non répartie ».
-        Les transferts ne comptent ni en recettes ni en dépenses.
+        Les transferts ne comptent ni en recettes ni en dépenses. Un crédit classé dans une catégorie de dépenses
+        (remboursement de santé, avoir…) est déduit du dépensé de cette catégorie.
     </p>
 }
 
