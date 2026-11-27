@@ -177,3 +177,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .danger-zone { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); display: flex; flex-direction: column; gap: 0.8rem; }
 .danger-zone p { margin: 0; }
 .budget-tree td:first-child { white-space: nowrap; }
+
+/* Provenances (compte / cartes) et transferts */
+.source-tabs { align-self: flex-start; flex-wrap: wrap; }
+.badge.transfer { border-style: dashed; color: var(--muted); }

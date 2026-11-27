@@ -32,6 +32,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<Expense>().HasIndex(e => e.Date);
         modelBuilder.Entity<Expense>().HasIndex(e => e.ImportKey);
+        modelBuilder.Entity<Expense>().Property(e => e.Source).HasDefaultValue(Expense.SourceAccount);
 
         modelBuilder.Entity<CategoryRule>()
             .HasOne(r => r.Category)

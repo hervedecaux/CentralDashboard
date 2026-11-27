@@ -39,6 +39,8 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         expense.Category = null; // on ne persiste que la clé étrangère
+        if (expense.IsTransfer) expense.CategoryId = null;
+        if (string.IsNullOrWhiteSpace(expense.Source)) expense.Source = Expense.SourceAccount;
         if (expense.Id == 0) db.Expenses.Add(expense);
         else db.Expenses.Update(expense);
         await db.SaveChangesAsync();
@@ -55,6 +57,16 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         await using var db = await dbFactory.CreateDbContextAsync();
         var from = new DateOnly(year, month, 1);
         var to = from.AddMonths(1);
-        return await db.Expenses.Where(e => e.Date >= from && e.Date < to).SumAsync(e => e.Amount);
+        return await db.Expenses.Where(e => e.Date >= from && e.Date < to && !e.IsTransfer).SumAsync(e => e.Amount);
+    }
+
+    /// <summary>Provenances connues : « Compte » d'abord, puis les cartes.</summary>
+    public async Task<List<string>> GetSourcesAsync()
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var sources = await db.Expenses.Select(e => e.Source).Distinct().ToListAsync();
+        return sources.Append(Expense.SourceAccount).Distinct()
+            .OrderBy(s => s != Expense.SourceAccount).ThenBy(s => s)
+            .ToList();
     }
 }

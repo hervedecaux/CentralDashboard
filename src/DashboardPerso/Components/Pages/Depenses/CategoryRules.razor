@@ -12,7 +12,8 @@
 </header>
 
 <p class="muted">
-    À l'import d'un relevé, une opération dont le libellé contient le texte d'une règle reçoit sa catégorie.
+    À l'import d'un relevé, une opération dont le libellé contient le texte d'une règle reçoit sa catégorie,
+    ou est marquée comme <strong>transfert</strong> (ex. virement vers un compte de crédit) : sans catégorie et hors budget.
     Les majuscules et les accents ne comptent pas. Si plusieurs règles correspondent, la plus longue l'emporte.
 </p>
 
@@ -20,11 +21,12 @@
     <span class="muted">Les libellés contenant</span>
     <input @bind="pattern" @bind:event="oninput" placeholder="ex. ORANGE SA" />
     <span class="muted">vont dans</span>
-    <select @bind="categoryId">
+    <select @bind="target">
         <option value="">Choisir…</option>
+        <option value="transfert">Transfert (sans catégorie, hors budget)</option>
         <CategoryOptions Categories="categories" />
     </select>
-    <button class="btn btn-primary" disabled="@(categoryId is null || string.IsNullOrWhiteSpace(pattern))" @onclick="Add">Ajouter</button>
+    <button class="btn btn-primary" disabled="@(target == "" || string.IsNullOrWhiteSpace(pattern))" @onclick="Add">Ajouter</button>
 </div>
 
 @if (rules is not null)
@@ -37,7 +39,10 @@
                 {
                     <tr>
                         <td><code>@r.Pattern</code></td>
-                        <td><span class="dot" style="background:@r.Category?.Color"></span>@r.Category?.FullName</td>
+                        <td>
+                            @if (r.MarkAsTransfer) { <span class="badge transfer">Transfert</span> }
+                            else { <span class="dot" style="background:@r.Category?.Color"></span>@r.Category?.FullName }
+                        </td>
                         <td class="col-justify-end"><DeleteButton OnConfirm="() => Delete(r.Id)" /></td>
                     </tr>
                 }
@@ -51,7 +56,7 @@
     private List<CategoryRule>? rules;
     private List<BudgetCategory> categories = [];
     private string pattern = "";
-    private int? categoryId;
+    private string target = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -61,7 +66,8 @@
 
     private async Task Add()
     {
-        await Rules.AddAsync(pattern, categoryId!.Value);
+        var transfer = target == "transfert";
+        await Rules.AddAsync(pattern, transfer ? null : int.Parse(target), transfer);
         pattern = "";
         rules = await Rules.GetAllAsync();
     }

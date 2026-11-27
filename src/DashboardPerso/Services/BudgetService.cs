@@ -157,7 +157,7 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
         var to = period.To;
 
         var spentByCategory = await db.Expenses
-            .Where(e => e.Date >= from && e.Date < to && e.CategoryId != null)
+            .Where(e => e.Date >= from && e.Date < to && e.CategoryId != null && !e.IsTransfer)
             .GroupBy(e => e.CategoryId!.Value)
             .Select(g => new { CategoryId = g.Key, Total = g.Sum(e => e.Amount) })
             .ToDictionaryAsync(x => x.CategoryId, x => x.Total);

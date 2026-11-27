@@ -107,7 +107,11 @@ else
                     <span>
                         <span class="muted">@e.Date.ToString("dd/MM")</span>
                         <a href="depenses/@e.Id">@e.Label</a>
-                        @if (e.Category is not null)
+                        @if (e.IsTransfer)
+                        {
+                            <span class="badge transfer">Transfert</span>
+                        }
+                        else if (e.Category is not null)
                         {
                             <CategoryBadge Category="e.Category" />
                         }

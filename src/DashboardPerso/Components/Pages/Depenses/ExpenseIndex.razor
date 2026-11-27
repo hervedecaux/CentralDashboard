@@ -19,16 +19,37 @@
 }
 else
 {
+    @* Une vue par provenance : tout, le compte, chaque carte. *@
+    @if (sources.Count > 1)
+    {
+        <div class="segmented source-tabs">
+            <button class="@(sourceFilter == "" ? "active" : "")" @onclick='() => SetSource("")'>Tout</button>
+            @foreach (var s in sources)
+            {
+                <button class="@(sourceFilter == s ? "active" : "")" @onclick="() => SetSource(s)">@s</button>
+            }
+        </div>
+    }
+
     <div class="toolbar">
-        <label class="inline">
-            Catégorie
-            <select @bind="categoryFilter">
-                <option value="">Toutes</option>
-                <option value="-1">Sans catégorie</option>
-                <CategoryOptions Categories="categories" />
-            </select>
-        </label>
-        <span class="muted">@Filtered.Count() dépense(s) · total <strong>@Filtered.Sum(e => e.Amount).ToString("C")</strong></span>
+        <div class="actions">
+            <label class="inline">
+                Catégorie
+                <select @bind="categoryFilter">
+                    <option value="">Toutes</option>
+                    <option value="-1">Sans catégorie</option>
+                    <CategoryOptions Categories="categories" />
+                </select>
+            </label>
+            <label class="inline"><input type="checkbox" @bind="showTransfers" /> Afficher les transferts</label>
+        </div>
+        <span class="muted">
+            @Filtered.Count(e => !e.IsTransfer) dépense(s) · total <strong>@Filtered.Where(e => !e.IsTransfer).Sum(e => e.Amount).ToString("C")</strong>
+            @if (showTransfers && Filtered.Any(e => e.IsTransfer))
+            {
+                <span> · transferts @Filtered.Where(e => e.IsTransfer).Sum(e => e.Amount).ToString("C")</span>
+            }
+        </span>
     </div>
 
     @* Liste en mémoire : remplaçable par <TelerikGrid Data="@items"> sans toucher au service. *@
@@ -36,12 +57,25 @@ else
         <QuickGrid Items="Filtered" Pagination="pagination" Class="table">
             <PropertyColumn Title="Date" Property="e => e.Date" Format="dd/MM/yyyy" Sortable="true" IsDefaultSortColumn="true" InitialSortDirection="SortDirection.Descending" />
             <TemplateColumn Title="Libellé" SortBy="byLabel">
-                <a href="depenses/@context.Id">@context.Label</a>
+                <a href="depenses/@context.Id" class="@(context.IsTransfer ? "muted" : "")">@context.Label</a>
+                @if (sourceFilter == "" && context.Source != Expense.SourceAccount)
+                {
+                    <div class="muted small">@context.Source</div>
+                }
             </TemplateColumn>
             <TemplateColumn Title="Catégorie" SortBy="byCategory">
-                <CategoryBadge Category="context.Category" ShowEmpty="true" />
+                @if (context.IsTransfer)
+                {
+                    <span class="badge transfer" title="Hors budget">Transfert</span>
+                }
+                else
+                {
+                    <CategoryBadge Category="context.Category" ShowEmpty="true" />
+                }
             </TemplateColumn>
-            <PropertyColumn Title="Montant" Property="e => e.Amount" Format="C" Sortable="true" Align="Align.End" />
+            <TemplateColumn Title="Montant" SortBy="byAmount" Align="Align.End">
+                <span class="@(context.IsTransfer ? "muted" : "")">@context.Amount.ToString("C")</span>
+            </TemplateColumn>
         </QuickGrid>
     </div>
     <Pager State="pagination" />
@@ -51,24 +85,46 @@ else
     private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private List<Expense>? items;
     private List<BudgetCategory> categories = [];
+    private List<string> sources = [];
     private string categoryFilter = "";
+    private string sourceFilter = "";
+    private bool showTransfers = true;
     private readonly PaginationState pagination = new() { ItemsPerPage = 20 };
 
     private readonly GridSort<Expense> byLabel = GridSort<Expense>.ByAscending(e => e.Label);
-    private readonly GridSort<Expense> byCategory = GridSort<Expense>.ByAscending(e => e.Category == null ? "" : e.Category.FullName);
+    private readonly GridSort<Expense> byAmount = GridSort<Expense>.ByAscending(e => e.Amount);
+    private readonly GridSort<Expense> byCategory = GridSort<Expense>.ByAscending(
+        e => e.IsTransfer ? "~transfert" : e.Category == null ? "" : e.Category.FullName);
 
-    private IQueryable<Expense> Filtered => categoryFilter switch
+    private IQueryable<Expense> Filtered
     {
-        "" => items!.AsQueryable(),
-        "-1" => items!.Where(e => e.CategoryId == null).AsQueryable(),
-        // Une catégorie principale inclut ses sous-catégories.
-        var id => items!.Where(e => e.CategoryId == int.Parse(id) || e.Category?.ParentId == int.Parse(id)).AsQueryable()
-    };
+        get
+        {
+            IEnumerable<Expense> q = items!;
+            if (sourceFilter != "") q = q.Where(e => e.Source == sourceFilter);
+            if (!showTransfers) q = q.Where(e => !e.IsTransfer);
+            q = categoryFilter switch
+            {
+                "" => q,
+                "-1" => q.Where(e => e.CategoryId == null && !e.IsTransfer),
+                // Une catégorie principale inclut ses sous-catégories.
+                var id => q.Where(e => e.CategoryId == int.Parse(id) || e.Category?.ParentId == int.Parse(id)),
+            };
+            return q.AsQueryable();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         categories = await Budget.GetCategoriesAsync();
+        sources = await Expenses.GetSourcesAsync();
         await Load();
+    }
+
+    private async Task SetSource(string source)
+    {
+        sourceFilter = source;
+        await pagination.SetCurrentPageIndexAsync(0);
     }
 
     private async Task OnMonthChanged(DateOnly value)

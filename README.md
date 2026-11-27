@@ -55,7 +55,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 |---|---|
 | **Accueil** (`/`) | Dépensé ce mois-ci vs prévu, reste à dépenser, tâches ouvertes et en retard, budget par catégorie, prochaines tâches, dernières dépenses. |
 | **Budget** (`/budget`) | Catégories et sous-catégories (ex. Automobile › Carburant, Assurance, Entretien), budget **annuel**, vue par mois (annuel ÷ 12) ou par année (avec le prévu à date). |
-| **Dépenses** (`/depenses`) | Liste par mois, filtre par catégorie, tri, pagination, total. Ajout, modification, suppression. |
+| **Dépenses** (`/depenses`) | Liste par mois, une vue par provenance (compte, chaque carte), filtre par catégorie, transferts affichables ou masqués, tri, pagination, total. Ajout, modification, suppression. |
 | **Import** (`/depenses/import`) | Import du relevé CSV du Crédit Agricole : aperçu, catégories proposées par des règles, doublons écartés. |
 | **Tâches** (`/taches`) | Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
 
@@ -77,7 +77,9 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 Ce qui est importé :
 
 - **Les débits du compte** deviennent des dépenses. Les crédits (salaire, remboursements…) sont affichés mais pas importés.
-- **Les sections « cartes »** en fin de fichier (cartes à débit différé) sont ignorées : le total mensuel de la carte apparaît déjà comme un débit du compte.
+- **Les paiements par carte** (cartes à débit différé, sections « carte » en fin de fichier) sont importés un par un, avec la carte d'origine (« Carte ••5524 · … »). Ils sont datés du jour du paiement.
+- **Le débit mensuel de la carte** sur le compte est reconnu (libellé mentionnant la carte et montant égal au total de la section carte). Il est importé comme **transfert** : visible, sans catégorie, hors budget. Ainsi les paiements ne sont pas comptés deux fois.
+- **Transferts** : une règle peut aussi marquer un libellé comme transfert, par exemple un virement vers un compte de crédit. On peut également cocher « Transfert » sur une dépense.
 - **Doublons** : chaque opération importée garde une empreinte (date, montant, libellé complet). Réimporter un fichier qui chevauche le précédent n'ajoute que les nouvelles opérations. Si une dépense saisie à la main a la même date et le même montant, la ligne est marquée « doublon possible » et décochée.
 - **Catégories** : la page **Règles de catégorie** associe un texte (ex. `ORANGE SA`) à une catégorie. Les majuscules et les accents ne comptent pas, et la règle la plus longue l'emporte. Le lien **+ règle** de l'aperçu crée une règle à partir d'une ligne et l'applique aussitôt aux autres.
 

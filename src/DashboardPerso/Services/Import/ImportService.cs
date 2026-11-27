@@ -14,7 +14,7 @@ public enum ImportStatus
     AlreadyImported,
     /// <summary>Une dépense saisie à la main a la même date et le même montant : décoché par défaut.</summary>
     PossibleDuplicate,
-    /// <summary>Crédit (salaire, remboursement…) : pas une dépense, décoché par défaut.</summary>
+    /// <summary>Crédit (salaire, remboursement…) : pas une dépense, non importé.</summary>
     Credit
 }
 
@@ -26,10 +26,16 @@ public class ImportRow
     public required ImportStatus Status { get; init; }
     public bool Include { get; set; }
     public int? CategoryId { get; set; }
-    /// <summary>Motif de la règle qui a choisi la catégorie, pour l'afficher.</summary>
+
+    /// <summary>Transfert : importé sans catégorie et hors budget.</summary>
+    public bool IsTransfer { get; set; }
+
+    /// <summary>Motif de la règle qui a choisi la catégorie (ou le transfert), pour l'afficher.</summary>
     public string? MatchedRule { get; set; }
-    /// <summary>Vrai si l'utilisateur a choisi la catégorie à la main : les règles ne l'écrasent plus.</summary>
+
+    /// <summary>Vrai si l'utilisateur a choisi la catégorie ou le transfert à la main : les règles ne l'écrasent plus.</summary>
     public bool CategoryChosenByUser { get; set; }
+
     public string Label { get; set; } = "";
 }
 
@@ -37,7 +43,9 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
 {
     public const int MaxFileSize = 5 * 1024 * 1024;
 
-    /// <summary>Lit le fichier et prépare l'aperçu : doublons détectés, catégories proposées.</summary>
+    private sealed record Rule(string Pattern, string Normalized, int? CategoryId, bool MarkAsTransfer);
+
+    /// <summary>Lit le fichier et prépare l'aperçu : doublons détectés, catégories et transferts proposés.</summary>
     public async Task<List<ImportRow>> PreviewAsync(byte[] content)
     {
         var operations = CreditAgricoleCsvParser.Parse(content);
@@ -70,34 +78,29 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
                 : manualExpenses.Contains((op.Date, op.Debit!.Value)) ? ImportStatus.PossibleDuplicate
                 : ImportStatus.New;
 
-            var rule = FindRule(rules, op);
-            return new ImportRow
+            var row = new ImportRow
             {
                 Operation = op,
                 ImportKey = keys[i],
                 Status = status,
                 Include = status == ImportStatus.New,
-                CategoryId = rule?.CategoryId,
-                MatchedRule = rule?.Pattern,
                 Label = Truncate(op.Description, 120),
             };
+            ApplyRule(row, rules);
+            return row;
         }).ToList();
     }
 
-    /// <summary>Réapplique les règles (ex. après en avoir créé une) aux lignes non catégorisées à la main.</summary>
+    /// <summary>Réapplique les règles (ex. après en avoir créé une) aux lignes non modifiées à la main.</summary>
     public async Task ApplyRulesAsync(IEnumerable<ImportRow> rows)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         var rules = await LoadRulesAsync(db);
         foreach (var row in rows.Where(r => !r.CategoryChosenByUser))
-        {
-            var rule = FindRule(rules, row.Operation);
-            row.CategoryId = rule?.CategoryId;
-            row.MatchedRule = rule?.Pattern;
-        }
+            ApplyRule(row, rules);
     }
 
-    /// <summary>Enregistre les lignes cochées comme dépenses. Renvoie le nombre de dépenses créées.</summary>
+    /// <summary>Enregistre les lignes cochées comme dépenses (ou transferts). Renvoie le nombre de lignes créées.</summary>
     public async Task<int> ImportAsync(IEnumerable<ImportRow> rows)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
@@ -116,7 +119,9 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
                 Date = row.Operation.Date,
                 Label = Truncate(string.IsNullOrWhiteSpace(row.Label) ? row.Operation.Description : row.Label, 120),
                 Amount = row.Operation.Debit!.Value,
-                CategoryId = row.CategoryId,
+                CategoryId = row.IsTransfer ? null : row.CategoryId,
+                IsTransfer = row.IsTransfer,
+                Source = row.Operation.Source,
                 Notes = Truncate(row.Operation.RawLabel, 500),
                 ImportKey = row.ImportKey,
             });
@@ -127,7 +132,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
     }
 
     /// <summary>
-    /// Empreinte stable d'une opération : date + montants + libellé complet normalisé.
+    /// Empreinte stable d'une opération : date + montants + libellé complet normalisé (+ carte d'origine).
     /// Deux opérations strictement identiques le même jour sont distinguées par leur rang.
     /// </summary>
     public static List<string> ComputeKeys(IReadOnlyList<BankOperation> operations)
@@ -136,11 +141,17 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         var result = new List<string>(operations.Count);
         foreach (var op in operations)
         {
-            var baseKey = string.Join('|',
+            var parts = new List<string>
+            {
                 op.Date.ToString("yyyy-MM-dd"),
                 op.Debit?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? "",
                 op.Credit?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? "",
-                TextNormalizer.Normalize(op.RawLabel));
+                TextNormalizer.Normalize(op.RawLabel),
+            };
+            // Les opérations du compte gardent la même empreinte qu'avant l'ajout des cartes.
+            if (op.IsCardOperation) parts.Add(TextNormalizer.Normalize(op.Source));
+
+            var baseKey = string.Join('|', parts);
             var occurrence = seen[baseKey] = seen.GetValueOrDefault(baseKey) + 1;
             var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{baseKey}#{occurrence}"));
             result.Add(Convert.ToHexString(hash));
@@ -148,22 +159,33 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         return result;
     }
 
-    private static async Task<List<(string Pattern, string Normalized, int CategoryId)>> LoadRulesAsync(AppDbContext db) =>
-        (await db.CategoryRules.AsNoTracking().Where(r => r.CategoryId != null).ToListAsync())
-            .Select(r => (r.Pattern, TextNormalizer.Normalize(r.Pattern), r.CategoryId!.Value))
-            .Where(r => r.Item2.Length > 0)
+    private static void ApplyRule(ImportRow row, List<Rule> rules)
+    {
+        if (row.Operation.IsCardStatementTotal)
+        {
+            row.IsTransfer = true;
+            row.CategoryId = null;
+            row.MatchedRule = null;
+            return;
+        }
+        var rule = FindRule(rules, row.Operation);
+        row.IsTransfer = rule?.MarkAsTransfer ?? false;
+        row.CategoryId = rule is { MarkAsTransfer: false } ? rule.CategoryId : null;
+        row.MatchedRule = rule?.Pattern;
+    }
+
+    private static async Task<List<Rule>> LoadRulesAsync(AppDbContext db) =>
+        (await db.CategoryRules.AsNoTracking().Where(r => r.CategoryId != null || r.MarkAsTransfer).ToListAsync())
+            .Select(r => new Rule(r.Pattern, TextNormalizer.Normalize(r.Pattern), r.CategoryId, r.MarkAsTransfer))
+            .Where(r => r.Normalized.Length > 0)
             // La règle la plus précise (motif le plus long) l'emporte.
-            .OrderByDescending(r => r.Item2.Length)
+            .OrderByDescending(r => r.Normalized.Length)
             .ToList();
 
-    private static (string Pattern, string Normalized, int CategoryId)? FindRule(
-        List<(string Pattern, string Normalized, int CategoryId)> rules, BankOperation op)
+    private static Rule? FindRule(List<Rule> rules, BankOperation op)
     {
         var label = TextNormalizer.Normalize(op.RawLabel);
-        foreach (var rule in rules)
-            if (label.Contains(rule.Normalized, StringComparison.Ordinal))
-                return rule;
-        return null;
+        return rules.FirstOrDefault(r => label.Contains(r.Normalized, StringComparison.Ordinal));
     }
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..(max - 1)] + "…";

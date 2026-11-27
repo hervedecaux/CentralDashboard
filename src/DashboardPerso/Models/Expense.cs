@@ -27,4 +27,16 @@ public class Expense
     /// </summary>
     [StringLength(64)]
     public string? ImportKey { get; set; }
+
+    /// <summary>Provenance : « Compte » ou une carte (« Carte ••5524 · Herve Decaux »).</summary>
+    [StringLength(80)]
+    public string Source { get; set; } = SourceAccount;
+
+    /// <summary>
+    /// Transfert (débit du relevé d'une carte différée, virement vers un compte de crédit…) :
+    /// visible dans les listes, sans catégorie, et exclu du budget et des totaux de dépenses.
+    /// </summary>
+    public bool IsTransfer { get; set; }
+
+    public const string SourceAccount = "Compte";
 }

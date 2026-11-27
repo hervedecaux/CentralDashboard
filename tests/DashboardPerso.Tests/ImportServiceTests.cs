@@ -27,8 +27,8 @@ public sealed class ImportServiceTests : IDisposable
     public async Task Apercu_coche_les_debits_et_ignore_les_credits()
     {
         var rows = await service.PreviewAsync(CsvTestData.Sample());
-        Assert.Equal(5, rows.Count(r => r.Status == ImportStatus.New && r.Include));
-        Assert.Single(rows, r => r.Status == ImportStatus.Credit && !r.Include);
+        Assert.Equal(8, rows.Count(r => r.Status == ImportStatus.New && r.Include));   // 6 débits compte + 2 paiements carte
+        Assert.Equal(2, rows.Count(r => r.Status == ImportStatus.Credit && !r.Include)); // salaire + remboursement carte
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class ImportServiceTests : IDisposable
     public async Task Reimporter_le_meme_fichier_ne_cree_pas_de_doublon()
     {
         var first = await service.PreviewAsync(CsvTestData.Sample());
-        Assert.Equal(5, await service.ImportAsync(first));
+        Assert.Equal(8, await service.ImportAsync(first));
 
         var second = await service.PreviewAsync(CsvTestData.Sample());
         Assert.All(second.Where(r => r.Operation.IsDebit), r => Assert.Equal(ImportStatus.AlreadyImported, r.Status));
@@ -55,7 +55,48 @@ public sealed class ImportServiceTests : IDisposable
         Assert.Equal(0, await service.ImportAsync(second));
 
         using var db = factory.CreateDbContext();
-        Assert.Equal(5, db.Expenses.Count());
+        Assert.Equal(8, db.Expenses.Count());
+    }
+
+    [Fact]
+    public async Task Le_releve_carte_est_un_transfert_et_les_paiements_carte_gardent_leur_provenance()
+    {
+        var rows = await service.PreviewAsync(CsvTestData.Sample());
+        var releve = rows.Single(r => r.Operation.IsCardStatementTotal);
+        Assert.True(releve.IsTransfer);
+        Assert.Null(releve.CategoryId);
+
+        await service.ImportAsync(rows);
+        using var db = factory.CreateDbContext();
+        Assert.True(db.Expenses.Single(e => e.Amount == 107.50m).IsTransfer);
+        Assert.Equal(2, db.Expenses.Count(e => e.Source == "Carte ••5524 · Mme Claire Dupont"));
+        Assert.Equal(6, db.Expenses.Count(e => e.Source == "Compte"));
+    }
+
+    [Fact]
+    public async Task Une_regle_peut_marquer_un_transfert()
+    {
+        using (var db = factory.CreateDbContext())
+        {
+            db.CategoryRules.Add(new CategoryRule { Pattern = "ECHEANCE", MarkAsTransfer = true });
+            db.SaveChanges();
+        }
+        var rows = await service.PreviewAsync(CsvTestData.Sample());
+        var pret = rows.Single(r => r.Operation.Type == "Remboursement de prêt");
+        Assert.True(pret.IsTransfer);
+        Assert.Null(pret.CategoryId);
+        Assert.Equal("ECHEANCE", pret.MatchedRule);
+    }
+
+    [Fact]
+    public void L_empreinte_des_operations_du_compte_ne_change_pas_avec_les_cartes()
+    {
+        var op = new BankOperation { Date = new DateOnly(2026, 3, 2), Type = "T", Description = "D", RawLabel = "T | D", Debit = 1m };
+        var card = op with { Source = "Carte ••5524" };
+        var keys = ImportService.ComputeKeys([op, card]);
+        Assert.NotEqual(keys[0], keys[1]);
+        // Même empreinte qu'une opération du compte importée avant l'ajout des cartes.
+        Assert.Equal(ImportService.ComputeKeys([op])[0], keys[0]);
     }
 
     [Fact]
