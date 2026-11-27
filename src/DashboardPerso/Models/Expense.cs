@@ -42,4 +42,15 @@ public class Expense
     /// </summary>
     public bool IsTransfer { get; set; }
 
+    /// <summary>Recette (crédit : salaire, remboursement…) : hors budget et hors totaux de dépenses, comptée dans le solde.</summary>
+    public bool IsIncome { get; set; }
+
+    /// <summary>Ventilation sur plusieurs catégories (vide dans le cas général). Si présente, <see cref="CategoryId"/> est null.</summary>
+    public List<ExpenseSplit> Splits { get; set; } = [];
+
+    public bool IsSplit => Splits.Count > 0;
+
+    /// <summary>Montant signé pour le solde : négatif pour une dépense, positif pour une recette.</summary>
+    public decimal SignedAmount => IsIncome ? Amount : -Amount;
+
 }

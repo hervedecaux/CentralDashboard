@@ -68,6 +68,43 @@ else
         </table>
     </div>
 
+    <div class="card form-card balance-card">
+        <h2>Solde du compte courant</h2>
+        <p class="muted small">
+            Le solde théorique part de ce solde (en fin de journée à la date indiquée) et ajoute les recettes
+            et retire les dépenses et transferts du compte courant postérieurs. Il est comparé au solde
+            indiqué par la banque dans le dernier relevé importé.
+        </p>
+        <div class="rule-draft plain">
+            <label class="inline">Solde initial (€) <input type="number" step="0.01" @bind="initialAmount" /></label>
+            <label class="inline">au <input type="date" @bind="initialDate" /></label>
+            <button class="btn btn-primary" @onclick="SaveInitial">Enregistrer</button>
+            @if (balance is not null) { <button class="btn btn-ghost" @onclick="ClearInitial">Effacer</button> }
+        </div>
+        @if (balance is not null)
+        {
+            <div class="balance-grid">
+                <span>Solde théorique aujourd'hui</span><strong>@balance.Theoretical.ToString("C")</strong>
+                @if (balance.BankDate is not null)
+                {
+                    <span>Solde banque au @balance.BankDate?.ToString("dd/MM/yyyy")</span><strong>@balance.BankBalance?.ToString("C")</strong>
+                    <span>Solde théorique à cette date</span><strong>@balance.TheoreticalAtBankDate?.ToString("C")</strong>
+                    <span>Écart</span>
+                    <strong class="@(balance.Difference == 0 ? "positive" : "negative")">
+                        @(balance.Difference == 0 ? "aucun ✓" : balance.Difference?.ToString("+#,##0.00 €;-#,##0.00 €"))
+                    </strong>
+                }
+            </div>
+            @if (balance.Difference is { } d && d != 0)
+            {
+                <p class="muted small">
+                    Un écart vient en général d'opérations non importées (relevé manquant, lignes décochées) ou
+                    d'un solde initial à une mauvaise date.
+                </p>
+            }
+        }
+    </div>
+
     <div class="card rule-draft">
         <strong>Ajouter une carte ou un compte</strong>
         <input @bind="newLabel" @bind:event="oninput" placeholder="ex. Carte de crédit Visa" />
@@ -86,9 +123,36 @@ else
     private AccountKind newKind = AccountKind.CreditCard;
     private string? error;
 
-    protected override Task OnInitializedAsync() => Load();
+    private AccountBalance? balance;
+    private decimal? initialAmount;
+    private DateOnly? initialDate;
 
-    private async Task Load() => items = await Accounts.GetSummariesAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        var main = items!.First(s => s.Account.Id == Account.MainAccountId).Account;
+        initialAmount = main.InitialBalance;
+        initialDate = main.InitialBalanceDate;
+    }
+
+    private async Task Load()
+    {
+        items = await Accounts.GetSummariesAsync();
+        balance = await Accounts.GetBalanceAsync();
+    }
+
+    private async Task SaveInitial()
+    {
+        await Accounts.SetInitialBalanceAsync(Account.MainAccountId, initialAmount, initialDate);
+        await Load();
+    }
+
+    private async Task ClearInitial()
+    {
+        initialAmount = null;
+        initialDate = null;
+        await SaveInitial();
+    }
 
     private void StartEdit(Account a) => editing = new Account { Id = a.Id, Label = a.Label, Kind = a.Kind };
 

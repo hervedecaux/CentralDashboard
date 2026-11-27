@@ -6,6 +6,18 @@ namespace DashboardPerso.Services;
 
 public record AccountSummary(Account Account, int ExpenseCount, DateOnly? LastExpense);
 
+/// <summary>
+/// Solde théorique : solde initial + recettes − dépenses (transferts compris) postérieures à sa date.
+/// Comparé au dernier solde indiqué par la banque, à la même date.
+/// </summary>
+public record AccountBalance(
+    decimal InitialBalance, DateOnly InitialDate,
+    decimal Theoretical, DateOnly TheoreticalDate,
+    decimal? BankBalance, DateOnly? BankDate, decimal? TheoreticalAtBankDate)
+{
+    public decimal? Difference => BankBalance - TheoreticalAtBankDate;
+}
+
 public class AccountService(IDbContextFactory<AppDbContext> dbFactory)
 {
     /// <summary>Comptes et cartes : le compte courant d'abord, puis par libellé.</summary>
@@ -32,6 +44,38 @@ public class AccountService(IDbContextFactory<AppDbContext> dbFactory)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         return await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id);
+    }
+
+    /// <summary>Solde théorique d'un compte à une date (aujourd'hui par défaut), null sans solde initial.</summary>
+    public async Task<AccountBalance?> GetBalanceAsync(int accountId = Account.MainAccountId, DateOnly? at = null)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId);
+        if (account?.InitialBalance is not { } initial || account.InitialBalanceDate is not { } from) return null;
+
+        var date = at ?? DateOnly.FromDateTime(DateTime.Today);
+        var movements = await db.Expenses
+            .Where(e => e.AccountId == accountId && e.Date > from)
+            .Select(e => new { e.Date, Signed = e.IsIncome ? e.Amount : -e.Amount })
+            .ToListAsync();
+
+        decimal BalanceAt(DateOnly d) => initial + movements.Where(m => m.Date <= d).Sum(m => m.Signed);
+
+        var bankDate = account.BankBalanceDate is { } b && b > from ? b : (DateOnly?)null;
+        return new AccountBalance(
+            initial, from,
+            BalanceAt(date > from ? date : from), date,
+            bankDate is null ? null : account.BankBalance, bankDate,
+            bankDate is { } bd ? BalanceAt(bd) : null);
+    }
+
+    public async Task SetInitialBalanceAsync(int accountId, decimal? amount, DateOnly? date)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var account = await db.Accounts.FirstAsync(a => a.Id == accountId);
+        account.InitialBalance = amount is null || date is null ? null : amount;
+        account.InitialBalanceDate = amount is null || date is null ? null : date;
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Libellés déjà donnés aux comptes importés, par identifiant d'import.</summary>

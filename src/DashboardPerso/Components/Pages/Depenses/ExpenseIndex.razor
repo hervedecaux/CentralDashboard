@@ -42,10 +42,16 @@ else
                     <CategoryOptions Categories="categories" />
                 </select>
             </label>
-            <label class="inline"><input type="checkbox" @bind="showTransfers" /> Afficher les transferts</label>
+            <label class="inline"><input type="checkbox" @bind="showTransfers" /> Transferts</label>
+            <label class="inline"><input type="checkbox" @bind="showIncome" /> Recettes</label>
         </div>
         <span class="muted">
-            @Filtered.Count(e => !e.IsTransfer) dépense(s) · total <strong>@Filtered.Where(e => !e.IsTransfer).Sum(e => e.Amount).ToString("C")</strong>
+            @{ var spent = Filtered.Where(e => !e.IsTransfer && !e.IsIncome); }
+            @spent.Count() dépense(s) · total <strong>@CategoryAmount(spent).ToString("C")</strong>
+            @if (showIncome && Filtered.Any(e => e.IsIncome && !e.IsTransfer))
+            {
+                <span> · recettes <span class="positive">@Filtered.Where(e => e.IsIncome && !e.IsTransfer).Sum(e => e.Amount).ToString("C")</span></span>
+            }
             @if (showTransfers && Filtered.Any(e => e.IsTransfer))
             {
                 <span> · transferts @Filtered.Where(e => e.IsTransfer).Sum(e => e.Amount).ToString("C")</span>
@@ -72,13 +78,28 @@ else
                 {
                     <span class="badge transfer" title="Hors budget">Transfert</span>
                 }
+                else if (context.IsIncome)
+                {
+                    <span class="badge income">Recette</span>
+                }
+                else if (context.IsSplit)
+                {
+                    <span class="badge split" title="@string.Join(" + ", context.Splits.Select(x => $"{x.Category?.Name ?? "Sans catégorie"} {x.Amount:C}"))">Ventilée · @context.Splits.Count catégories</span>
+                }
                 else
                 {
                     <CategoryBadge Category="context.Category" ShowEmpty="true" />
                 }
             </TemplateColumn>
             <TemplateColumn Title="Montant" SortBy="byAmount" Align="Align.End">
-                <span class="@(context.IsTransfer ? "muted" : "")">@context.Amount.ToString("C")</span>
+                @if (context.IsIncome)
+                {
+                    <span class="@(context.IsTransfer ? "muted" : "positive")">+@context.Amount.ToString("C")</span>
+                }
+                else
+                {
+                    <span class="@(context.IsTransfer ? "muted" : "")">@context.Amount.ToString("C")</span>
+                }
             </TemplateColumn>
         </QuickGrid>
     </div>
@@ -94,6 +115,7 @@ else
     private string categoryFilter = "";
     private int? accountFilter;
     private bool showTransfers = true;
+    private bool showIncome = true;
     private readonly PaginationState pagination = new() { ItemsPerPage = 20 };
 
     private readonly GridSort<Expense> byLabel = GridSort<Expense>.ByAscending(e => e.Label);
@@ -108,15 +130,25 @@ else
             IEnumerable<Expense> q = items!;
             if (accountFilter is { } a) q = q.Where(e => e.AccountId == a);
             if (!showTransfers) q = q.Where(e => !e.IsTransfer);
+            if (!showIncome) q = q.Where(e => !e.IsIncome);
             q = categoryFilter switch
             {
                 "" => q,
-                "-1" => q.Where(e => e.CategoryId == null && !e.IsTransfer),
-                // Une catégorie principale inclut ses sous-catégories.
-                var id => q.Where(e => e.CategoryId == int.Parse(id) || e.Category?.ParentId == int.Parse(id)),
+                "-1" => q.Where(e => e.CategoryId == null && !e.IsTransfer && !e.IsIncome && !e.IsSplit),
+                // Une catégorie principale inclut ses sous-catégories ; une dépense ventilée y figure si une part y est.
+                var id => q.Where(e => InCategory(e.Category, int.Parse(id)) || e.Splits.Any(x => InCategory(x.Category, int.Parse(id)))),
             };
             return q.AsQueryable();
         }
+    }
+
+    private static bool InCategory(BudgetCategory? c, int id) => c is not null && (c.Id == id || c.ParentId == id);
+
+    /// <summary>Total des dépenses ; avec un filtre de catégorie, seules les parts concernées des dépenses ventilées comptent.</summary>
+    private decimal CategoryAmount(IEnumerable<Expense> expenses)
+    {
+        if (!int.TryParse(categoryFilter, out var id) || id < 0) return expenses.Sum(e => e.Amount);
+        return expenses.Sum(e => e.IsSplit ? e.Splits.Where(x => InCategory(x.Category, id)).Sum(x => x.Amount) : e.Amount);
     }
 
     protected override async Task OnInitializedAsync()

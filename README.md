@@ -74,6 +74,12 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 - **Bénéficiaires** (`/beneficiaires`) : ils sont déduits du libellé bancaire à l'import (« ORANGE SA-ORANGE - Orange - Votre abonnement… » → « ORANGE SA-ORANGE »), ou saisis sur une dépense. On peut les renommer : le lien avec le libellé bancaire est conservé.
 - **Catégorie par défaut** d'un bénéficiaire (ou « Transfert ») : elle s'applique aux nouvelles dépenses, à l'import comme à la saisie, avant les règles d'import. « Appliquer » catégorise aussi ses dépenses existantes sans catégorie.
 
+## Ventilation et solde
+
+- **Ventiler une dépense** : sur la fiche d'une dépense, « Ventiler sur plusieurs catégories » permet de répartir le montant en plusieurs parts. Leur somme doit égaler le montant, et chaque part compte dans le budget de sa catégorie.
+- **Recettes** : le choix Dépense / Recette se fait en haut de la fiche. Les recettes s'affichent en vert avec un « + » dans la liste.
+- **Solde théorique** : dans **Comptes et cartes**, saisissez le solde du compte courant à une date (fin de journée). Le solde théorique = ce solde + recettes − dépenses et transferts du compte courant postérieurs. Il est comparé au solde indiqué par la banque dans le dernier relevé importé, et affiché sur l'accueil. Un écart signale en général des opérations manquantes.
+
 ## Importer un relevé bancaire (Crédit Agricole)
 
 1. Sur le site du Crédit Agricole, téléchargez la liste des opérations du compte au format **CSV**.
@@ -82,7 +88,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 
 Ce qui est importé :
 
-- **Les débits du compte** deviennent des dépenses. Les crédits (salaire, remboursements…) sont affichés mais pas importés.
+- **Les débits** deviennent des dépenses, **les crédits** (salaire, remboursements…) des **recettes** : hors budget et hors totaux de dépenses, mais comptées dans le solde. Le solde indiqué par la banque (« Solde au … ») est mémorisé.
 - **Les paiements par carte** (cartes à débit différé, sections « carte » en fin de fichier) sont importés un par un, avec la carte d'origine (« Carte ••5524 · … »). Ils sont datés du jour du paiement.
 - **Le débit mensuel de la carte** sur le compte est reconnu (libellé mentionnant la carte et montant égal au total de la section carte). Il est importé comme **transfert** : visible, sans catégorie, hors budget. Ainsi les paiements ne sont pas comptés deux fois.
 - **Transferts** : une règle peut aussi marquer un libellé comme transfert, par exemple un virement vers un compte de crédit. On peut également cocher « Transfert » sur une dépense.

@@ -34,4 +34,12 @@ public class Account
     public string? ImportId { get; set; }
 
     public bool IsManual => ImportId is null;
+
+    /// <summary>Solde de départ, à la fin de la journée <see cref="InitialBalanceDate"/>.</summary>
+    public decimal? InitialBalance { get; set; }
+    public DateOnly? InitialBalanceDate { get; set; }
+
+    /// <summary>Dernier solde indiqué par la banque dans un relevé importé (« Solde au … »).</summary>
+    public decimal? BankBalance { get; set; }
+    public DateOnly? BankBalanceDate { get; set; }
 }

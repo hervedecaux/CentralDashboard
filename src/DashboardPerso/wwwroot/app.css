@@ -188,3 +188,15 @@ input.search { min-width: 280px; }
 .btn.small { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
 .muted-link { color: var(--muted); }
 .payees select { max-width: 240px; }
+.badge.income { border-color: var(--ok); color: var(--ok); }
+
+/* Ventilation */
+.badge.split { border-style: dotted; border-color: var(--primary); }
+.link.left { align-self: flex-start; font-weight: normal; }
+.split-editor { border: 1px dashed var(--border); border-radius: 8px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.split-row { display: grid; grid-template-columns: 1fr 140px auto; gap: 0.5rem; align-items: center; }
+.split-footer { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+.balance-card { max-width: none; }
+.rule-draft.plain { padding: 0; }
+.balance-grid { display: grid; grid-template-columns: max-content max-content; gap: 0.35rem 2rem; }
+.form-card form > .segmented { align-self: flex-start; }

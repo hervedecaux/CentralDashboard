@@ -24,11 +24,26 @@ public sealed class ImportServiceTests : IDisposable
     public void Dispose() => connection.Dispose();
 
     [Fact]
-    public async Task Apercu_coche_les_debits_et_ignore_les_credits()
+    public async Task Apercu_coche_debits_et_credits_les_credits_sont_des_recettes()
     {
         var rows = await service.PreviewAsync(CsvTestData.Sample());
-        Assert.Equal(8, rows.Count(r => r.Status == ImportStatus.New && r.Include));   // 6 débits compte + 2 paiements carte
-        Assert.Equal(2, rows.Count(r => r.Status == ImportStatus.Credit && !r.Include)); // salaire + remboursement carte
+        Assert.Equal(10, rows.Count(r => r.Status == ImportStatus.New && r.Include));  // compte : 6 débits + 1 crédit ; carte : 2 débits + 1 crédit
+        Assert.Equal(2, rows.Count(r => r.IsIncome));                                    // salaire + remboursement carte
+        Assert.All(rows.Where(r => r.IsIncome), r => Assert.Null(r.CategoryId));
+    }
+
+    [Fact]
+    public async Task Le_solde_du_releve_est_lu_et_memorise()
+    {
+        var preview = await service.PreviewStatementAsync(CsvTestData.Sample());
+        Assert.Equal(1234.56m, preview.BankBalance);
+        Assert.Equal(new DateOnly(2026, 3, 15), preview.BankBalanceDate);
+
+        await service.ImportAsync(preview.Rows, preview.BankBalance, preview.BankBalanceDate);
+        using var db = factory.CreateDbContext();
+        var main = db.Accounts.Single(a => a.Id == Account.MainAccountId);
+        Assert.Equal(1234.56m, main.BankBalance);
+        Assert.True(db.Expenses.Single(e => e.Amount == 2100m).IsIncome);
     }
 
     [Fact]
@@ -44,10 +59,10 @@ public sealed class ImportServiceTests : IDisposable
     public async Task Reimporter_le_meme_fichier_ne_cree_pas_de_doublon()
     {
         var first = await service.PreviewAsync(CsvTestData.Sample());
-        Assert.Equal(8, await service.ImportAsync(first));
+        Assert.Equal(10, await service.ImportAsync(first));
 
         var second = await service.PreviewAsync(CsvTestData.Sample());
-        Assert.All(second.Where(r => r.Operation.IsDebit), r => Assert.Equal(ImportStatus.AlreadyImported, r.Status));
+        Assert.All(second, r => Assert.Equal(ImportStatus.AlreadyImported, r.Status));
         Assert.Equal(0, await service.ImportAsync(second));
 
         // Même en forçant la sélection, l'enregistrement revérifie.
@@ -55,7 +70,7 @@ public sealed class ImportServiceTests : IDisposable
         Assert.Equal(0, await service.ImportAsync(second));
 
         using var db = factory.CreateDbContext();
-        Assert.Equal(8, db.Expenses.Count());
+        Assert.Equal(10, db.Expenses.Count());
     }
 
     [Fact]
@@ -72,8 +87,8 @@ public sealed class ImportServiceTests : IDisposable
         var carte = db.Accounts.Single(a => a.ImportId == "Carte ••5524");
         Assert.Equal("Carte ••5524 · Mme Claire Dupont", carte.Label);
         Assert.Equal(AccountKind.DeferredDebitCard, carte.Kind);
-        Assert.Equal(2, db.Expenses.Count(e => e.AccountId == carte.Id));
-        Assert.Equal(6, db.Expenses.Count(e => e.AccountId == Account.MainAccountId));
+        Assert.Equal(3, db.Expenses.Count(e => e.AccountId == carte.Id));   // 2 paiements + 1 remboursement
+        Assert.Equal(7, db.Expenses.Count(e => e.AccountId == Account.MainAccountId));   // 6 débits + 1 salaire
     }
 
     [Fact]

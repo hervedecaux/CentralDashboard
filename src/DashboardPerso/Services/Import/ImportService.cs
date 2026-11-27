@@ -8,14 +8,12 @@ namespace DashboardPerso.Services.Import;
 
 public enum ImportStatus
 {
-    /// <summary>Débit jamais importé : coché par défaut.</summary>
+    /// <summary>Opération jamais importée : cochée par défaut.</summary>
     New,
     /// <summary>Même opération déjà importée (même empreinte) : ignorée.</summary>
     AlreadyImported,
-    /// <summary>Une dépense saisie à la main a la même date et le même montant : décoché par défaut.</summary>
+    /// <summary>Une opération saisie à la main a la même date et le même montant : décochée par défaut.</summary>
     PossibleDuplicate,
-    /// <summary>Crédit (salaire, remboursement…) : pas une dépense, non importé.</summary>
-    Credit
 }
 
 /// <summary>Une ligne de l'aperçu d'import, modifiable par l'utilisateur avant validation.</summary>
@@ -26,6 +24,9 @@ public class ImportRow
     public required ImportStatus Status { get; init; }
     public bool Include { get; set; }
     public int? CategoryId { get; set; }
+
+    /// <summary>Crédit (salaire, remboursement…) : importé comme recette, hors budget, compté dans le solde.</summary>
+    public bool IsIncome => !Operation.IsDebit;
 
     /// <summary>Transfert : importé sans catégorie et hors budget.</summary>
     public bool IsTransfer { get; set; }
@@ -45,6 +46,9 @@ public class ImportRow
     public string Label { get; set; } = "";
 }
 
+/// <summary>Aperçu d'un relevé : lignes et solde indiqué par la banque.</summary>
+public record ImportPreview(List<ImportRow> Rows, decimal? BankBalance, DateOnly? BankBalanceDate);
+
 public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
 {
     public const int MaxFileSize = 5 * 1024 * 1024;
@@ -53,11 +57,14 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
 
     private sealed record Defaults(List<Rule> Rules, Dictionary<string, (int? CategoryId, bool IsTransfer)> Payees);
 
+    public async Task<List<ImportRow>> PreviewAsync(byte[] content) => (await PreviewStatementAsync(content)).Rows;
+
     /// <summary>Lit le fichier et prépare l'aperçu : doublons détectés, catégories et transferts proposés.</summary>
-    public async Task<List<ImportRow>> PreviewAsync(byte[] content)
+    public async Task<ImportPreview> PreviewStatementAsync(byte[] content)
     {
-        var operations = CreditAgricoleCsvParser.Parse(content);
-        if (operations.Count == 0) return [];
+        var statement = CreditAgricoleCsvParser.ParseStatement(content);
+        var operations = statement.Operations;
+        if (operations.Count == 0) return new ImportPreview([], statement.Balance, statement.BalanceDate);
 
         await using var db = await dbFactory.CreateDbContextAsync();
         var from = operations.Min(o => o.Date);
@@ -71,19 +78,18 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
 
         var manualExpenses = (await db.Expenses
                 .Where(e => e.ImportKey == null && e.Date >= from && e.Date <= to)
-                .Select(e => new { e.Date, e.Amount })
+                .Select(e => new { e.Date, e.Amount, e.IsIncome })
                 .ToListAsync())
-            .Select(e => (e.Date, e.Amount))
+            .Select(e => (e.Date, e.Amount, e.IsIncome))
             .ToHashSet();
 
         var rules = await LoadDefaultsAsync(db);
         var keys = ComputeKeys(operations);
 
-        return operations.Select((op, i) =>
+        var rows = operations.Select((op, i) =>
         {
-            var status = !op.IsDebit ? ImportStatus.Credit
-                : existingKeys.Contains(keys[i]) ? ImportStatus.AlreadyImported
-                : manualExpenses.Contains((op.Date, op.Debit!.Value)) ? ImportStatus.PossibleDuplicate
+            var status = existingKeys.Contains(keys[i]) ? ImportStatus.AlreadyImported
+                : manualExpenses.Contains((op.Date, op.Amount, !op.IsDebit)) ? ImportStatus.PossibleDuplicate
                 : ImportStatus.New;
 
             var row = new ImportRow
@@ -97,6 +103,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             ApplyRule(row, rules);
             return row;
         }).ToList();
+        return new ImportPreview(rows, statement.Balance, statement.BalanceDate);
     }
 
     /// <summary>Réapplique les règles (ex. après en avoir créé une) aux lignes non modifiées à la main.</summary>
@@ -109,10 +116,21 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
     }
 
     /// <summary>Enregistre les lignes cochées comme dépenses (ou transferts). Renvoie le nombre de lignes créées.</summary>
-    public async Task<int> ImportAsync(IEnumerable<ImportRow> rows)
+    public async Task<int> ImportAsync(IEnumerable<ImportRow> rows, decimal? bankBalance = null, DateOnly? bankBalanceDate = null)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        var selected = rows.Where(r => r.Include && r.Operation.IsDebit).ToList();
+        var selected = rows.Where(r => r.Include && r.Operation.Amount > 0).ToList();
+
+        // Solde indiqué par la banque : conservé s'il est plus récent, pour le comparer au solde théorique.
+        if (bankBalance is not null && bankBalanceDate is not null)
+        {
+            var main = await db.Accounts.FirstAsync(a => a.Id == Account.MainAccountId);
+            if (main.BankBalanceDate is null || main.BankBalanceDate <= bankBalanceDate)
+            {
+                main.BankBalance = bankBalance;
+                main.BankBalanceDate = bankBalanceDate;
+            }
+        }
 
         // Revérifie au moment de l'enregistrement (double clic, import en parallèle…).
         var keys = selected.Select(r => r.ImportKey).ToList();
@@ -129,9 +147,10 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             {
                 Date = row.Operation.Date,
                 Label = Truncate(string.IsNullOrWhiteSpace(row.Label) ? row.Operation.Description : row.Label, 120),
-                Amount = row.Operation.Debit!.Value,
-                CategoryId = row.IsTransfer ? null : row.CategoryId,
+                Amount = row.Operation.Amount,
+                CategoryId = row.IsTransfer || row.IsIncome ? null : row.CategoryId,
                 IsTransfer = row.IsTransfer,
+                IsIncome = row.IsIncome,
                 Account = account,
                 Payee = payee,
                 Notes = Truncate(row.Operation.RawLabel, 500),
@@ -185,14 +204,17 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             row.CategoryId = null;
             return;
         }
-        if (defaults.Payees.TryGetValue(TextNormalizer.Normalize(row.Payee), out var d))
+        // Une recette n'a pas de catégorie de budget : seul le « transfert » s'applique.
+        if (defaults.Payees.TryGetValue(TextNormalizer.Normalize(row.Payee), out var d)
+            && (!row.IsIncome || d.IsTransfer))
         {
             row.IsTransfer = d.IsTransfer;
-            row.CategoryId = d.IsTransfer ? null : d.CategoryId;
+            row.CategoryId = d.IsTransfer || row.IsIncome ? null : d.CategoryId;
             row.FromPayeeDefault = true;
             return;
         }
         var rule = FindRule(defaults.Rules, row.Operation);
+        if (row.IsIncome && rule is { MarkAsTransfer: false }) rule = null;
         row.IsTransfer = rule?.MarkAsTransfer ?? false;
         row.CategoryId = rule is { MarkAsTransfer: false } ? rule.CategoryId : null;
         row.MatchedRule = rule?.Pattern;

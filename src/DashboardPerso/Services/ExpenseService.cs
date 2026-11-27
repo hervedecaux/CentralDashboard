@@ -16,6 +16,7 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
             .Include(e => e.Category).ThenInclude(c => c!.Parent)
             .Include(e => e.Account)
             .Include(e => e.Payee)
+            .Include(e => e.Splits).ThenInclude(x => x.Category)
             .Where(e => e.Date >= from && e.Date < to)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .ToListAsync();
@@ -28,6 +29,7 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
             .Include(e => e.Category).ThenInclude(c => c!.Parent)
             .Include(e => e.Account)
             .Include(e => e.Payee)
+            .Include(e => e.Splits).ThenInclude(x => x.Category)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .Take(count)
             .ToListAsync();
@@ -36,7 +38,10 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
     public async Task<Expense?> GetAsync(int id)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        return await db.Expenses.AsNoTracking().Include(e => e.Payee).FirstOrDefaultAsync(e => e.Id == id);
+        return await db.Expenses.AsNoTracking()
+            .Include(e => e.Payee)
+            .Include(e => e.Splits)
+            .FirstOrDefaultAsync(e => e.Id == id);
     }
 
     /// <summary>
@@ -46,9 +51,25 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
     public async Task SaveAsync(Expense expense, string? payeeName = null)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
+        // Ventilation : au moins deux parts, dont la somme égale le montant.
+        var splits = expense.Splits.Where(x => x.Amount != 0).ToList();
+        if (splits.Count >= 2 && !expense.IsTransfer && !expense.IsIncome)
+        {
+            if (splits.Sum(x => x.Amount) != expense.Amount)
+                throw new InvalidOperationException(
+                    $"La ventilation ({splits.Sum(x => x.Amount):C}) ne correspond pas au montant ({expense.Amount:C}).");
+            expense.CategoryId = null;
+        }
+        else
+        {
+            if (splits.Count == 1 && expense.CategoryId is null) expense.CategoryId = splits[0].CategoryId;
+            splits = [];
+        }
+
         expense.Category = null; // on ne persiste que les clés étrangères
         expense.Account = null;
         expense.Payee = null;
+        expense.Splits = [];
         if (expense.AccountId == 0) expense.AccountId = Account.MainAccountId;
 
         if (payeeName is not null)
@@ -59,18 +80,28 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
             {
                 if (payee.Id == 0) await db.SaveChangesAsync();
                 expense.PayeeId = payee.Id;
-                if (expense.CategoryId is null && !expense.IsTransfer)
+                if (expense.CategoryId is null && splits.Count == 0 && !expense.IsTransfer && !expense.IsIncome)
                 {
                     expense.IsTransfer = payee.DefaultIsTransfer;
                     expense.CategoryId = payee.DefaultCategoryId;
                 }
             }
         }
-        if (expense.IsTransfer) expense.CategoryId = null;
+        if (expense.IsTransfer || expense.IsIncome) expense.CategoryId = null;
 
+        await using var tx = await db.Database.BeginTransactionAsync();
         if (expense.Id == 0) db.Expenses.Add(expense);
-        else db.Expenses.Update(expense);
+        else
+        {
+            db.Expenses.Update(expense);
+            await db.ExpenseSplits.Where(x => x.ExpenseId == expense.Id).ExecuteDeleteAsync();
+        }
         await db.SaveChangesAsync();
+        foreach (var part in splits)
+            db.ExpenseSplits.Add(new ExpenseSplit { ExpenseId = expense.Id, CategoryId = part.CategoryId, Amount = part.Amount });
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+        expense.Splits = splits;
     }
 
     public async Task DeleteAsync(int id)
@@ -84,7 +115,7 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         await using var db = await dbFactory.CreateDbContextAsync();
         var from = new DateOnly(year, month, 1);
         var to = from.AddMonths(1);
-        return await db.Expenses.Where(e => e.Date >= from && e.Date < to && !e.IsTransfer).SumAsync(e => e.Amount);
+        return await db.Expenses.Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && !e.IsIncome).SumAsync(e => e.Amount);
     }
 
 }

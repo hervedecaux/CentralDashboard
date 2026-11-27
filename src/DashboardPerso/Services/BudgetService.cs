@@ -89,7 +89,7 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
     public async Task<(int Expenses, int Rules)> GetUsageAsync(int id)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        return (await db.Expenses.CountAsync(e => e.CategoryId == id),
+        return (await db.Expenses.CountAsync(e => e.CategoryId == id || e.Splits.Any(s => s.CategoryId == id)),
                 await db.CategoryRules.CountAsync(r => r.CategoryId == id));
     }
 
@@ -137,6 +137,8 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
         await using var tx = await db.Database.BeginTransactionAsync();
         await db.Expenses.Where(e => e.CategoryId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.CategoryId, reassignTo));
+        await db.ExpenseSplits.Where(x => x.CategoryId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CategoryId, reassignTo));
         if (reassignTo is null)
             await db.CategoryRules.Where(r => r.CategoryId == id).ExecuteDeleteAsync();
         else
@@ -156,11 +158,21 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
         var from = period.From;
         var to = period.To;
 
-        var spentByCategory = await db.Expenses
-            .Where(e => e.Date >= from && e.Date < to && e.CategoryId != null && !e.IsTransfer)
+        // Dépenses non ventilées + parts des dépenses ventilées (hors transferts et recettes).
+        var direct = await db.Expenses
+            .Where(e => e.Date >= from && e.Date < to && e.CategoryId != null && !e.IsTransfer && !e.IsIncome)
             .GroupBy(e => e.CategoryId!.Value)
             .Select(g => new { CategoryId = g.Key, Total = g.Sum(e => e.Amount) })
-            .ToDictionaryAsync(x => x.CategoryId, x => x.Total);
+            .ToListAsync();
+        var splits = await db.ExpenseSplits
+            .Where(s => s.CategoryId != null && s.Expense!.Date >= from && s.Expense.Date < to
+                        && !s.Expense.IsTransfer && !s.Expense.IsIncome)
+            .GroupBy(s => s.CategoryId!.Value)
+            .Select(g => new { CategoryId = g.Key, Total = g.Sum(s => s.Amount) })
+            .ToListAsync();
+        var spentByCategory = direct.Concat(splits)
+            .GroupBy(x => x.CategoryId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
 
         var categories = Order(await db.BudgetCategories.AsNoTracking().ToListAsync());
 
