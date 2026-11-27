@@ -57,7 +57,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 | **Budget** (`/budget`) | Catégories et sous-catégories (ex. Automobile › Carburant, Assurance, Entretien), budget **annuel**, vue par mois (annuel ÷ 12) ou par année (avec le prévu à date). |
 | **Opérations** (`/depenses`) | Dépenses et recettes. Liste par mois ou par année (bouton Mois / Année, ou `/depenses?vue=annee`), une vue par provenance (compte, chaque carte), filtre par catégorie, transferts affichables ou masqués, tri, pagination, total. Ajout, modification, suppression. La liste garde sa vue, sa période, ses filtres et sa page au retour d'une fiche. |
 | **Import** (`/depenses/import`) | Import du relevé CSV du Crédit Agricole : aperçu, catégories proposées par des règles, doublons écartés. |
-| **Tâches** (`/taches`) | Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
+| **Tâches** (`/taches`) | **Aujourd'hui** et **Demain** : choisir les tâches à faire dans la journée (« + Aujourd'hui », « + Demain », ajout rapide), les cocher au fil de la journée, reporter à demain celles qui ne sont pas faites (une tâche non faite reste aussi dans la liste du jour, marquée « Reportée »). Les tâches du jour s'affichent et se cochent sur l'accueil. Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
 
 ## Catégories et budget
 

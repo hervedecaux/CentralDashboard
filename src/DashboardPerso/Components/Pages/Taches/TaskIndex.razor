@@ -12,18 +12,110 @@
 
 <div class="toolbar">
     <div class="segmented">
-        <button class="@(filter == "open" ? "active" : "")" @onclick='() => filter = "open"'>Ouvertes</button>
+        <button class="@(filter == Today ? "active" : "")" @onclick="() => SetFilter(Today)">Aujourd'hui@(dayCount > 0 ? $" ({dayCount})" : "")</button>
+        <button class="@(filter == Tomorrow ? "active" : "")" @onclick="() => SetFilter(Tomorrow)">Demain@(tomorrowCount > 0 ? $" ({tomorrowCount})" : "")</button>
+        <button class="@(filter == "open" ? "active" : "")" @onclick='() => SetFilter("open")'>Ouvertes</button>
         @foreach (var s in Enum.GetValues<TaskItemStatus>())
         {
-            <button class="@(filter == s.ToString() ? "active" : "")" @onclick="() => filter = s.ToString()">@s.Label()</button>
+            <button class="@(filter == s.ToString() ? "active" : "")" @onclick="() => SetFilter(s.ToString())">@s.Label()</button>
         }
-        <button class="@(filter == "all" ? "active" : "")" @onclick='() => filter = "all"'>Toutes</button>
+        <button class="@(filter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>Toutes</button>
     </div>
 </div>
 
 @if (items is null)
 {
     <p class="muted">Chargement…</p>
+}
+else if (IsDayView)
+{
+    var isToday = filter == Today;
+    var day = isToday ? today : today.AddDays(1);
+    var done = dayList.Count(t => t.Status == TaskItemStatus.Done);
+    <div class="card day-plan">
+        <div class="card-header">
+            <h2>@(isToday ? "Aujourd'hui" : "Demain") <span class="muted small">@day.ToString("dddd d MMMM")</span></h2>
+            @if (dayList.Count > 0)
+            {
+                <span class="muted">@done / @dayList.Count terminée(s)</span>
+            }
+        </div>
+        @if (dayList.Count > 0)
+        {
+            <ProgressBar Percent="@(100.0 * done / dayList.Count)" Color="#2e9d5b" Neutral="true" />
+        }
+
+        <form class="quick-add" @onsubmit="QuickAdd" @onsubmit:preventDefault>
+            <input @bind="newTitle" @bind:event="oninput" placeholder="@(isToday ? "Ajouter une tâche pour aujourd'hui…" : "Ajouter une tâche pour demain…")" maxlength="150" />
+            <button type="submit" class="btn btn-ghost" disabled="@string.IsNullOrWhiteSpace(newTitle)">Ajouter</button>
+        </form>
+
+        @if (dayList.Count == 0)
+        {
+            <p class="muted">Aucune tâche prévue. Choisissez-en dans « À planifier » ci-dessous, ou ajoutez-en une.</p>
+        }
+        <ul class="list task-list">
+            @foreach (var t in dayList)
+            {
+                <li @key="t.Id">
+                    <span class="task-main">
+                        <input type="checkbox" checked="@(t.Status == TaskItemStatus.Done)" title="Marquer comme terminée"
+                               @onchange="e => Toggle(t, (bool)e.Value!)" />
+                        <a href="taches/@t.Id" class="@(t.Status == TaskItemStatus.Done ? "done" : "")">@t.Title</a>
+                        @if (t.Priority == TaskPriority.High) { <span class="badge prio-high">Haute</span> }
+                        @if (t.IsCarriedOver) { <span class="badge warn" title="Prévue le @t.PlannedFor?.ToString("dd/MM")">Reportée</span> }
+                        @if (t.DueDate is { } due) { <span class="small @(t.IsOverdue ? "negative" : "muted")">échéance @due.ToString("d MMM")</span> }
+                    </span>
+                    @if (t.Status != TaskItemStatus.Done)
+                    {
+                        <span class="task-actions">
+                            @if (isToday)
+                            {
+                                <button class="link small" @onclick="() => Plan(t, today.AddDays(1))">→ Demain</button>
+                            }
+                            else
+                            {
+                                <button class="link small" @onclick="() => Plan(t, today)">→ Aujourd'hui</button>
+                            }
+                            <button class="link small muted" title="Retirer de la liste (la tâche est conservée)" @onclick="() => Plan(t, null)">Retirer</button>
+                        </span>
+                    }
+                </li>
+            }
+        </ul>
+
+        @if (isToday && dayList.Any(t => t.Status != TaskItemStatus.Done))
+        {
+            <div class="form-actions">
+                <button class="btn btn-ghost" @onclick="CarryOver">Reporter les tâches non faites à demain</button>
+            </div>
+        }
+    </div>
+
+    <h2>À planifier</h2>
+    <div class="card">
+        @if (unplanned.Count == 0)
+        {
+            <p class="muted">Toutes les tâches ouvertes sont planifiées.</p>
+        }
+        <ul class="list task-list">
+            @foreach (var t in unplanned)
+            {
+                <li @key="t.Id">
+                    <span class="task-main">
+                        <a href="taches/@t.Id">@t.Title</a>
+                        <span class="badge prio-@t.Priority.ToString().ToLowerInvariant()">@t.Priority.Label()</span>
+                        @if (t.DueDate is { } due) { <span class="small @(t.IsOverdue ? "negative" : "muted")">échéance @due.ToString("d MMM")</span> }
+                        @if (t.PlannedFor is { } p) { <span class="small muted">prévue le @p.ToString("d MMM")</span> }
+                    </span>
+                    <span class="task-actions">
+                        <button class="btn btn-ghost small" @onclick="() => Plan(t, today)">+ Aujourd'hui</button>
+                        <button class="btn btn-ghost small" @onclick="() => Plan(t, today.AddDays(1))">+ Demain</button>
+                    </span>
+                </li>
+            }
+        </ul>
+    </div>
 }
 else
 {
@@ -45,6 +137,9 @@ else
             <TemplateColumn Title="Échéance" SortBy="byDue">
                 <span class="@(context.IsOverdue ? "negative" : "")">@(context.DueDate?.ToString("dd/MM/yyyy") ?? "—")</span>
             </TemplateColumn>
+            <TemplateColumn Title="Prévue" SortBy="byPlanned">
+                @PlannedLabel(context)
+            </TemplateColumn>
         </QuickGrid>
         @if (!Filtered.Any())
         {
@@ -54,13 +149,26 @@ else
 }
 
 @code {
+    private const string Today = "today";
+    private const string Tomorrow = "tomorrow";
+
+    [SupplyParameterFromQuery(Name = "vue")] public string? ViewQuery { get; set; }
+
     private List<TaskItem>? items;
-    private string filter = "open";
+    private List<TaskItem> dayList = [];
+    private List<TaskItem> unplanned = [];
+    private int dayCount, tomorrowCount;
+    private string filter = Today;
+    private string newTitle = "";
+    private DateOnly today = DateOnly.FromDateTime(DateTime.Today);
+
+    private bool IsDayView => filter is Today or Tomorrow;
 
     private readonly GridSort<TaskItem> byTitle = GridSort<TaskItem>.ByAscending(t => t.Title);
     private readonly GridSort<TaskItem> byPriority = GridSort<TaskItem>.ByDescending(t => t.Priority);
     private readonly GridSort<TaskItem> byStatus = GridSort<TaskItem>.ByAscending(t => t.Status);
     private readonly GridSort<TaskItem> byDue = GridSort<TaskItem>.ByAscending(t => t.DueDate ?? DateOnly.MaxValue);
+    private readonly GridSort<TaskItem> byPlanned = GridSort<TaskItem>.ByAscending(t => t.PlannedFor ?? DateOnly.MaxValue);
 
     private IQueryable<TaskItem> Filtered => filter switch
     {
@@ -69,11 +177,61 @@ else
         var s => items!.Where(t => t.Status.ToString() == s).AsQueryable()
     };
 
-    protected override async Task OnInitializedAsync() => items = await Tasks.GetAllAsync();
+    private string PlannedLabel(TaskItem t) => t.PlannedFor switch
+    {
+        null => "—",
+        { } p when t.Status != TaskItemStatus.Done && p <= today => "Aujourd'hui",
+        { } p when p == today.AddDays(1) => "Demain",
+        { } p => p.ToString("dd/MM/yyyy"),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        filter = ViewQuery switch { "demain" => Tomorrow, "ouvertes" => "open", _ => Today };
+        await Load();
+    }
+
+    private async Task SetFilter(string value)
+    {
+        filter = value;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        today = DateOnly.FromDateTime(DateTime.Today);
+        items = await Tasks.GetAllAsync();
+        var todayList = await Tasks.GetDayListAsync(today);
+        var tomorrowList = await Tasks.GetPlannedForAsync(today.AddDays(1));
+        dayCount = todayList.Count(t => t.Status != TaskItemStatus.Done);
+        tomorrowCount = tomorrowList.Count(t => t.Status != TaskItemStatus.Done);
+        dayList = filter == Tomorrow ? tomorrowList : todayList;
+        unplanned = await Tasks.GetUnplannedAsync(today);
+    }
 
     private async Task Toggle(TaskItem task, bool done)
     {
         await Tasks.SetStatusAsync(task.Id, done ? TaskItemStatus.Done : TaskItemStatus.Todo);
-        items = await Tasks.GetAllAsync();
+        await Load();
+    }
+
+    private async Task Plan(TaskItem task, DateOnly? day)
+    {
+        await Tasks.PlanAsync(task.Id, day);
+        await Load();
+    }
+
+    private async Task CarryOver()
+    {
+        await Tasks.CarryOverToTomorrowAsync(today);
+        await Load();
+    }
+
+    private async Task QuickAdd()
+    {
+        if (string.IsNullOrWhiteSpace(newTitle)) return;
+        await Tasks.QuickAddAsync(newTitle, filter == Tomorrow ? today.AddDays(1) : today);
+        newTitle = "";
+        await Load();
     }
 }
