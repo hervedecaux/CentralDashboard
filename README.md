@@ -47,7 +47,7 @@ scripts/macos/installer.sh
 Le script :
 
 1. publie l'application en version Release autonome pour votre processeur (Apple Silicon `osx-arm64`, ou Intel `osx-x64`, détecté automatiquement) dans `~/Applications/DashboardPerso` ;
-2. ajoute un lancement automatique à l'ouverture de session (`~/Library/LaunchAgents/local.dashboardperso.plist`), relancé en cas d'arrêt inattendu ;
+2. ajoute un lancement automatique à l'ouverture de session (`~/Library/LaunchAgents/local.dashboardperso.plist`), relancé s'il s'arrête ;
 3. démarre l'application et ouvre **http://localhost:5080**.
 
 Ensuite, il suffit d'ouvrir http://localhost:5080 (pensez à le mettre en favori).
@@ -58,9 +58,12 @@ Ensuite, il suffit d'ouvrir http://localhost:5080 (pensez à le mettre en favori
 | Réinstaller / redémarrer avec le code actuel | `scripts/macos/installer.sh` |
 | Désinstaller (les données sont conservées) | `scripts/macos/desinstaller.sh` |
 | Arrêter jusqu'à la prochaine session | `launchctl bootout gui/$(id -u)/local.dashboardperso` |
+| Comprendre pourquoi l'app ne tourne pas | `scripts/macos/diagnostic.sh` |
 | Journaux | `~/Library/Logs/DashboardPerso/` |
 
 **Sources NuGet :** le fichier `nuget.config` à la racine du dépôt limite la restauration à nuget.org et ignore les sources configurées globalement sur le Mac (par exemple le flux Telerik d'un autre projet). Sans lui, `dotnet publish` échoue avec « Impossible de charger l'index de service pour la source https://nuget.telerik.com/v3/index.json » si ce flux n'est pas authentifié.
+
+**Si l'app ne démarre pas après un redémarrage :** macOS demande d'autoriser les éléments lancés en arrière-plan. Ouvrez Réglages Système › Général › Ouverture, section « Autoriser en arrière-plan », vérifiez que DashboardPerso (ou l'élément sans nom de développeur) est activé, puis relancez `scripts/macos/installer.sh`. `scripts/macos/diagnostic.sh` indique l'état du lancement automatique et les dernières erreurs.
 
 Vos données restent dans `~/Library/Application Support/DashboardPerso/` : installer, mettre à jour ou désinstaller n'y touche pas, et les migrations s'appliquent au redémarrage. Pendant que la version installée tourne, le port 5080 est occupé : arrêtez-la avant de lancer `dotnet run` pour développer.
 
