@@ -51,7 +51,7 @@ public static partial class CreditAgricoleCsvParser
 
         var operations = new List<BankOperation>();
         string source = BankOperation.AccountSource;
-        string? holder = null;
+        string? holder = null, cardHolder = null;
         var cardSums = new Dictionary<string, decimal>();
 
         foreach (var row in rows.Skip(header + 1))
@@ -66,7 +66,8 @@ public static partial class CreditAgricoleCsvParser
                     holder = TitleCase(first[..first.LastIndexOf('-')].Trim());
                 else if (CardNumber().Match(string.Join(' ', row)) is { Success: true } m)
                 {
-                    source = $"Carte ••{m.Groups[1].Value}" + (holder is null ? "" : $" · {holder}");
+                    source = $"Carte ••{m.Groups[1].Value}";
+                    cardHolder = holder;
                     holder = null;
                 }
                 continue;                                                // en-têtes, titulaires, « Pas d'opérations… »
@@ -87,6 +88,7 @@ public static partial class CreditAgricoleCsvParser
                 Debit = ParseAmount(row[2]),
                 Credit = ParseAmount(row[3]),
                 Source = source,
+                CardHolder = cardHolder,
             };
             operations.Add(op);
             if (op.IsCardOperation)

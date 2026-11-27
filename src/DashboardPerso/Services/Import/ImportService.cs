@@ -36,6 +36,12 @@ public class ImportRow
     /// <summary>Vrai si l'utilisateur a choisi la catégorie ou le transfert à la main : les règles ne l'écrasent plus.</summary>
     public bool CategoryChosenByUser { get; set; }
 
+    /// <summary>Vrai si la catégorie (ou le transfert) vient de la catégorie par défaut du bénéficiaire.</summary>
+    public bool FromPayeeDefault { get; set; }
+
+    /// <summary>Bénéficiaire déduit du libellé.</summary>
+    public string Payee => Operation.Payee;
+
     public string Label { get; set; } = "";
 }
 
@@ -44,6 +50,8 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
     public const int MaxFileSize = 5 * 1024 * 1024;
 
     private sealed record Rule(string Pattern, string Normalized, int? CategoryId, bool MarkAsTransfer);
+
+    private sealed record Defaults(List<Rule> Rules, Dictionary<string, (int? CategoryId, bool IsTransfer)> Payees);
 
     /// <summary>Lit le fichier et prépare l'aperçu : doublons détectés, catégories et transferts proposés.</summary>
     public async Task<List<ImportRow>> PreviewAsync(byte[] content)
@@ -68,7 +76,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             .Select(e => (e.Date, e.Amount))
             .ToHashSet();
 
-        var rules = await LoadRulesAsync(db);
+        var rules = await LoadDefaultsAsync(db);
         var keys = ComputeKeys(operations);
 
         return operations.Select((op, i) =>
@@ -95,7 +103,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
     public async Task ApplyRulesAsync(IEnumerable<ImportRow> rows)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        var rules = await LoadRulesAsync(db);
+        var rules = await LoadDefaultsAsync(db);
         foreach (var row in rows.Where(r => !r.CategoryChosenByUser))
             ApplyRule(row, rules);
     }
@@ -114,6 +122,9 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         var added = 0;
         foreach (var row in selected.Where(r => !already.Contains(r.ImportKey)))
         {
+            var account = await AccountService.GetOrCreateForImportAsync(
+                db, row.Operation.Source, row.Operation.DefaultSourceLabel, row.Operation.IsCardOperation);
+            var payee = row.Operation.IsCardStatementTotal ? null : await PayeeService.GetOrCreateAsync(db, row.Payee);
             db.Expenses.Add(new Expense
             {
                 Date = row.Operation.Date,
@@ -121,7 +132,8 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
                 Amount = row.Operation.Debit!.Value,
                 CategoryId = row.IsTransfer ? null : row.CategoryId,
                 IsTransfer = row.IsTransfer,
-                Source = row.Operation.Source,
+                Account = account,
+                Payee = payee,
                 Notes = Truncate(row.Operation.RawLabel, 500),
                 ImportKey = row.ImportKey,
             });
@@ -159,16 +171,28 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         return result;
     }
 
-    private static void ApplyRule(ImportRow row, List<Rule> rules)
+    /// <summary>
+    /// Catégorie proposée : relevé de carte → transfert ; sinon catégorie par défaut du bénéficiaire ;
+    /// sinon première règle qui correspond.
+    /// </summary>
+    private static void ApplyRule(ImportRow row, Defaults defaults)
     {
+        row.MatchedRule = null;
+        row.FromPayeeDefault = false;
         if (row.Operation.IsCardStatementTotal)
         {
             row.IsTransfer = true;
             row.CategoryId = null;
-            row.MatchedRule = null;
             return;
         }
-        var rule = FindRule(rules, row.Operation);
+        if (defaults.Payees.TryGetValue(TextNormalizer.Normalize(row.Payee), out var d))
+        {
+            row.IsTransfer = d.IsTransfer;
+            row.CategoryId = d.IsTransfer ? null : d.CategoryId;
+            row.FromPayeeDefault = true;
+            return;
+        }
+        var rule = FindRule(defaults.Rules, row.Operation);
         row.IsTransfer = rule?.MarkAsTransfer ?? false;
         row.CategoryId = rule is { MarkAsTransfer: false } ? rule.CategoryId : null;
         row.MatchedRule = rule?.Pattern;
@@ -181,6 +205,15 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             // La règle la plus précise (motif le plus long) l'emporte.
             .OrderByDescending(r => r.Normalized.Length)
             .ToList();
+
+    /// <summary>Règles + catégories par défaut des bénéficiaires.</summary>
+    private static async Task<Defaults> LoadDefaultsAsync(AppDbContext db)
+    {
+        var payees = await db.Payees.AsNoTracking()
+            .Where(p => p.DefaultCategoryId != null || p.DefaultIsTransfer)
+            .ToDictionaryAsync(p => p.Key, p => (p.DefaultCategoryId, p.DefaultIsTransfer));
+        return new Defaults(await LoadRulesAsync(db), payees);
+    }
 
     private static Rule? FindRule(List<Rule> rules, BankOperation op)
     {

@@ -1,0 +1,142 @@
+@page "/beneficiaires"
+@inject PayeeService Payees
+@inject BudgetService Budget
+
+<PageTitle>Bénéficiaires · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Bénéficiaires</h1>
+</header>
+
+<p class="muted">
+    Les bénéficiaires sont déduits des libellés bancaires à l'import, ou saisis sur une dépense.
+    Une <strong>catégorie par défaut</strong> s'applique aux nouvelles dépenses du bénéficiaire (import et saisie),
+    avant les règles d'import. Le bouton « Appliquer » catégorise aussi ses dépenses existantes qui n'ont pas de catégorie.
+</p>
+
+@if (items is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    <div class="toolbar">
+        <input @bind="search" @bind:event="oninput" placeholder="Rechercher un bénéficiaire…" class="search" />
+        <label class="inline"><input type="checkbox" @bind="onlyWithoutDefault" /> Sans catégorie par défaut</label>
+        <span class="muted">@Visible.Count() bénéficiaire(s)</span>
+    </div>
+    @if (message is not null) { <div class="card notice success">@message</div> }
+
+    <div class="card table-card">
+        <table class="table payees">
+            <thead>
+                <tr>
+                    <th>Bénéficiaire</th>
+                    <th class="col-justify-end">Opérations</th>
+                    <th class="col-justify-end">Total</th>
+                    <th>Catégorie par défaut</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in Visible)
+                {
+                    var p = s.Payee;
+                    <tr>
+                        <td>
+                            @if (renaming == p.Id)
+                            {
+                                <input @bind="newName" @bind:event="oninput" class="label-input" />
+                                <button class="link small" @onclick="() => Rename(p)">OK</button>
+                                <button class="link small" @onclick="() => renaming = null">Annuler</button>
+                            }
+                            else
+                            {
+                                <span>@p.Name</span>
+                                <button class="link small muted-link" title="Renommer" @onclick="() => StartRename(p)">✎</button>
+                            }
+                            @if (s.LastExpense is { } last) { <div class="muted small">dernière le @last.ToString("dd/MM/yyyy")</div> }
+                        </td>
+                        <td class="col-justify-end">@s.ExpenseCount</td>
+                        <td class="col-justify-end amount">@s.Total.ToString("C")</td>
+                        <td>
+                            <select value="@(p.DefaultIsTransfer ? Transfer : p.DefaultCategoryId?.ToString() ?? "")"
+                                    @onchange="e => SetDefault(p, e.Value as string)">
+                                <option value="">Aucune</option>
+                                <option value="@Transfer">Transfert (hors budget)</option>
+                                <CategoryOptions Categories="categories" />
+                            </select>
+                        </td>
+                        <td class="col-justify-end nowrap">
+                            @if (s.Uncategorized > 0 && (p.DefaultCategoryId is not null || p.DefaultIsTransfer))
+                            {
+                                <button class="btn btn-ghost small" @onclick="() => Apply(p)">Appliquer à @s.Uncategorized dépense(s)</button>
+                            }
+                            else if (s.Uncategorized > 0)
+                            {
+                                <span class="muted small">@s.Uncategorized sans catégorie</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (!Visible.Any()) { <p class="muted empty">Aucun bénéficiaire. Ils apparaissent après un import de relevé.</p> }
+    </div>
+}
+
+@code {
+    private const string Transfer = "transfert";
+    private List<PayeeSummary>? items;
+    private List<BudgetCategory> categories = [];
+    private string search = "";
+    private bool onlyWithoutDefault;
+    private int? renaming;
+    private string newName = "";
+    private string? message;
+
+    private IEnumerable<PayeeSummary> Visible => items!
+        .Where(s => search.Length == 0 || s.Payee.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase))
+        .Where(s => !onlyWithoutDefault || (s.Payee.DefaultCategoryId is null && !s.Payee.DefaultIsTransfer));
+
+    protected override async Task OnInitializedAsync()
+    {
+        categories = await Budget.GetCategoriesAsync();
+        await Load();
+    }
+
+    private async Task Load() => items = await Payees.GetSummariesAsync();
+
+    private async Task SetDefault(Payee p, string? value)
+    {
+        message = null;
+        var transfer = value == Transfer;
+        await Payees.UpdateAsync(p.Id, p.Name, int.TryParse(value, out var id) ? id : null, transfer);
+        await Load();
+    }
+
+    private async Task Apply(Payee p)
+    {
+        var n = await Payees.ApplyDefaultToUncategorizedAsync(p.Id);
+        message = $"{n} dépense(s) de « {p.Name} » catégorisée(s).";
+        await Load();
+    }
+
+    private void StartRename(Payee p)
+    {
+        renaming = p.Id;
+        newName = p.Name;
+    }
+
+    private async Task Rename(Payee p)
+    {
+        message = null;
+        try
+        {
+            await Payees.UpdateAsync(p.Id, newName, p.DefaultCategoryId, p.DefaultIsTransfer);
+            renaming = null;
+        }
+        catch (InvalidOperationException ex) { message = ex.Message; }
+        await Load();
+    }
+}

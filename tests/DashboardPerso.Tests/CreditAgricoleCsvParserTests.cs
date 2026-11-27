@@ -12,7 +12,8 @@ public class CreditAgricoleCsvParserTests
         Assert.Equal(7, ops.Count(o => !o.IsCardOperation));
         var carte = ops.Where(o => o.IsCardOperation).ToList();
         Assert.Equal(3, carte.Count);
-        Assert.All(carte, o => Assert.Equal("Carte ••5524 · Mme Claire Dupont", o.Source));
+        Assert.All(carte, o => Assert.Equal("Carte ••5524", o.Source));
+        Assert.All(carte, o => Assert.Equal("Carte ••5524 · Mme Claire Dupont", o.DefaultSourceLabel));
         Assert.Equal("SUPERMARCHE EXEMPLE 25/02", carte[0].Description);
         Assert.Equal(10m, carte.Single(o => !o.IsDebit).Credit);
     }

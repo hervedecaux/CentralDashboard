@@ -181,3 +181,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 /* Provenances (compte / cartes) et transferts */
 .source-tabs { align-self: flex-start; flex-wrap: wrap; }
 .badge.transfer { border-style: dashed; color: var(--muted); }
+
+/* Réglages */
+.nav-section { color: #7d8494; font-size: 0.75rem; text-transform: uppercase; letter-spacing: .05em; padding: 1rem 0.75rem 0.3rem; }
+input.search { min-width: 280px; }
+.btn.small { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+.muted-link { color: var(--muted); }
+.payees select { max-width: 240px; }

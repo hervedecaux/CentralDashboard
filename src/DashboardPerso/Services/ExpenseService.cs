@@ -14,6 +14,8 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         var to = from.AddMonths(1);
         return await db.Expenses.AsNoTracking()
             .Include(e => e.Category).ThenInclude(c => c!.Parent)
+            .Include(e => e.Account)
+            .Include(e => e.Payee)
             .Where(e => e.Date >= from && e.Date < to)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .ToListAsync();
@@ -24,6 +26,8 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         await using var db = await dbFactory.CreateDbContextAsync();
         return await db.Expenses.AsNoTracking()
             .Include(e => e.Category).ThenInclude(c => c!.Parent)
+            .Include(e => e.Account)
+            .Include(e => e.Payee)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .Take(count)
             .ToListAsync();
@@ -32,15 +36,38 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
     public async Task<Expense?> GetAsync(int id)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        return await db.Expenses.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id);
+        return await db.Expenses.AsNoTracking().Include(e => e.Payee).FirstOrDefaultAsync(e => e.Id == id);
     }
 
-    public async Task SaveAsync(Expense expense)
+    /// <summary>
+    /// Enregistre une dépense. Si <paramref name="payeeName"/> est fourni, le bénéficiaire est retrouvé
+    /// (ou créé) et sa catégorie par défaut s'applique quand la dépense n'en a pas.
+    /// </summary>
+    public async Task SaveAsync(Expense expense, string? payeeName = null)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
-        expense.Category = null; // on ne persiste que la clé étrangère
+        expense.Category = null; // on ne persiste que les clés étrangères
+        expense.Account = null;
+        expense.Payee = null;
+        if (expense.AccountId == 0) expense.AccountId = Account.MainAccountId;
+
+        if (payeeName is not null)
+        {
+            var payee = await PayeeService.GetOrCreateAsync(db, payeeName);
+            if (payee is null) expense.PayeeId = null;
+            else
+            {
+                if (payee.Id == 0) await db.SaveChangesAsync();
+                expense.PayeeId = payee.Id;
+                if (expense.CategoryId is null && !expense.IsTransfer)
+                {
+                    expense.IsTransfer = payee.DefaultIsTransfer;
+                    expense.CategoryId = payee.DefaultCategoryId;
+                }
+            }
+        }
         if (expense.IsTransfer) expense.CategoryId = null;
-        if (string.IsNullOrWhiteSpace(expense.Source)) expense.Source = Expense.SourceAccount;
+
         if (expense.Id == 0) db.Expenses.Add(expense);
         else db.Expenses.Update(expense);
         await db.SaveChangesAsync();
@@ -60,13 +87,4 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         return await db.Expenses.Where(e => e.Date >= from && e.Date < to && !e.IsTransfer).SumAsync(e => e.Amount);
     }
 
-    /// <summary>Provenances connues : « Compte » d'abord, puis les cartes.</summary>
-    public async Task<List<string>> GetSourcesAsync()
-    {
-        await using var db = await dbFactory.CreateDbContextAsync();
-        var sources = await db.Expenses.Select(e => e.Source).Distinct().ToListAsync();
-        return sources.Append(Expense.SourceAccount).Distinct()
-            .OrderBy(s => s != Expense.SourceAccount).ThenBy(s => s)
-            .ToList();
-    }
 }

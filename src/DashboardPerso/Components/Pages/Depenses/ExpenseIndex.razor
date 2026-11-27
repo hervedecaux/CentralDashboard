@@ -1,6 +1,7 @@
 @page "/depenses"
 @inject ExpenseService Expenses
 @inject BudgetService Budget
+@inject AccountService Accounts
 
 <PageTitle>Dépenses · Dashboard perso</PageTitle>
 
@@ -9,7 +10,7 @@
     <div class="actions">
         <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
         <a class="btn btn-ghost" href="depenses/import">Importer un relevé</a>
-        <a class="btn btn-primary" href="depenses/nouvelle">+ Nouvelle dépense</a>
+        <a class="btn btn-primary" href="@(accountFilter is { } acc ? $"depenses/nouvelle?compte={acc}" : "depenses/nouvelle")">+ Nouvelle dépense</a>
     </div>
 </header>
 
@@ -20,13 +21,13 @@
 else
 {
     @* Une vue par provenance : tout, le compte, chaque carte. *@
-    @if (sources.Count > 1)
+    @if (accounts.Count > 1)
     {
         <div class="segmented source-tabs">
-            <button class="@(sourceFilter == "" ? "active" : "")" @onclick='() => SetSource("")'>Tout</button>
-            @foreach (var s in sources)
+            <button class="@(accountFilter is null ? "active" : "")" @onclick="() => SetAccount(null)">Tout</button>
+            @foreach (var a in accounts)
             {
-                <button class="@(sourceFilter == s ? "active" : "")" @onclick="() => SetSource(s)">@s</button>
+                <button class="@(accountFilter == a.Id ? "active" : "")" @onclick="() => SetAccount(a.Id)">@a.Label</button>
             }
         </div>
     }
@@ -58,10 +59,13 @@ else
             <PropertyColumn Title="Date" Property="e => e.Date" Format="dd/MM/yyyy" Sortable="true" IsDefaultSortColumn="true" InitialSortDirection="SortDirection.Descending" />
             <TemplateColumn Title="Libellé" SortBy="byLabel">
                 <a href="depenses/@context.Id" class="@(context.IsTransfer ? "muted" : "")">@context.Label</a>
-                @if (sourceFilter == "" && context.Source != Expense.SourceAccount)
-                {
-                    <div class="muted small">@context.Source</div>
-                }
+                <div class="muted small">
+                    @if (context.Payee is not null) { <span>@context.Payee.Name</span> }
+                    @if (accountFilter is null && context.AccountId != Account.MainAccountId)
+                    {
+                        <span>@(context.Payee is null ? "" : " · ")@context.Account?.Label</span>
+                    }
+                </div>
             </TemplateColumn>
             <TemplateColumn Title="Catégorie" SortBy="byCategory">
                 @if (context.IsTransfer)
@@ -85,9 +89,10 @@ else
     private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private List<Expense>? items;
     private List<BudgetCategory> categories = [];
-    private List<string> sources = [];
+    private List<Account> accounts = [];
+    [SupplyParameterFromQuery(Name = "compte")] public int? AccountQuery { get; set; }
     private string categoryFilter = "";
-    private string sourceFilter = "";
+    private int? accountFilter;
     private bool showTransfers = true;
     private readonly PaginationState pagination = new() { ItemsPerPage = 20 };
 
@@ -101,7 +106,7 @@ else
         get
         {
             IEnumerable<Expense> q = items!;
-            if (sourceFilter != "") q = q.Where(e => e.Source == sourceFilter);
+            if (accountFilter is { } a) q = q.Where(e => e.AccountId == a);
             if (!showTransfers) q = q.Where(e => !e.IsTransfer);
             q = categoryFilter switch
             {
@@ -117,13 +122,14 @@ else
     protected override async Task OnInitializedAsync()
     {
         categories = await Budget.GetCategoriesAsync();
-        sources = await Expenses.GetSourcesAsync();
+        accounts = await Accounts.GetAllAsync();
+        accountFilter = accounts.Any(a => a.Id == AccountQuery) ? AccountQuery : null;
         await Load();
     }
 
-    private async Task SetSource(string source)
+    private async Task SetAccount(int? id)
     {
-        sourceFilter = source;
+        accountFilter = id;
         await pagination.SetCurrentPageIndexAsync(0);
     }
 

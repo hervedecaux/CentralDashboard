@@ -2,6 +2,8 @@
 @page "/depenses/{Id:int}"
 @inject ExpenseService Expenses
 @inject BudgetService Budget
+@inject AccountService Accounts
+@inject PayeeService Payees
 @inject NavigationManager Nav
 
 <PageTitle>@(IsNew ? "Nouvelle dépense" : "Modifier la dépense") · Dashboard perso</PageTitle>
@@ -32,11 +34,21 @@ else
                 </label>
             </div>
 
-            <label>
-                Libellé
-                <InputText @bind-Value="model.Label" autofocus />
-                <ValidationMessage For="() => model.Label" />
-            </label>
+            <div class="form-row">
+                <label>
+                    Libellé
+                    <InputText @bind-Value="model.Label" autofocus />
+                    <ValidationMessage For="() => model.Label" />
+                </label>
+                <label>
+                    Bénéficiaire
+                    <input list="payees" value="@payeeName" @onchange="OnPayeeChanged" placeholder="ex. TOTALENERGIES" />
+                    <datalist id="payees">
+                        @foreach (var n in payeeNames) { <option value="@n"></option> }
+                    </datalist>
+                    @if (payeeHint is not null) { <span class="muted small">@payeeHint</span> }
+                </label>
+            </div>
 
             <div class="form-row">
                 <label>
@@ -47,9 +59,9 @@ else
                     </InputSelect>
                 </label>
                 <label>
-                    Provenance
-                    <InputSelect @bind-Value="model.Source">
-                        @foreach (var s in sources) { <option value="@s">@s</option> }
+                    Compte / carte
+                    <InputSelect @bind-Value="model.AccountId">
+                        @foreach (var a in accounts) { <option value="@a.Id">@a.Label</option> }
                     </InputSelect>
                 </label>
             </div>
@@ -79,24 +91,51 @@ else
 
 @code {
     [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "compte")] public int? AccountQuery { get; set; }
     private bool IsNew => Id is null;
     private Expense? model;
     private List<BudgetCategory> categories = [];
-    private List<string> sources = [];
+    private List<Account> accounts = [];
+    private List<string> payeeNames = [];
+    private string payeeName = "";
+    private string? payeeHint;
     private bool notFound;
 
     protected override async Task OnParametersSetAsync()
     {
         categories = await Budget.GetCategoriesAsync();
-        sources = await Expenses.GetSourcesAsync();
-        model = IsNew ? new Expense() : await Expenses.GetAsync(Id!.Value);
+        accounts = await Accounts.GetAllAsync();
+        payeeNames = await Payees.GetNamesAsync();
+        model = IsNew
+            ? new Expense { AccountId = accounts.Any(a => a.Id == AccountQuery) ? AccountQuery!.Value : Account.MainAccountId }
+            : await Expenses.GetAsync(Id!.Value);
         notFound = model is null;
+        payeeName = model?.Payee?.Name ?? "";
     }
 
     private async Task Save()
     {
-        await Expenses.SaveAsync(model!);
+        await Expenses.SaveAsync(model!, payeeName);
         Nav.NavigateTo("depenses");
+    }
+
+    /// <summary>Bénéficiaire connu avec une catégorie par défaut : on la propose si la dépense n'en a pas.</summary>
+    private async Task OnPayeeChanged(ChangeEventArgs e)
+    {
+        payeeName = e.Value as string ?? "";
+        payeeHint = null;
+        var payee = await Payees.FindByNameAsync(payeeName);
+        if (payee is null || model!.CategoryId is not null || model.IsTransfer) return;
+        if (payee.DefaultIsTransfer)
+        {
+            model.IsTransfer = true;
+            payeeHint = "Transfert par défaut pour ce bénéficiaire.";
+        }
+        else if (payee.DefaultCategoryId is { } cat)
+        {
+            model.CategoryId = cat;
+            payeeHint = "Catégorie par défaut du bénéficiaire appliquée.";
+        }
     }
 
     private async Task Delete()

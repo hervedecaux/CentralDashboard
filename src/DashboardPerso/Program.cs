@@ -29,6 +29,8 @@ builder.Services.AddScoped<ExpenseService>();
 builder.Services.AddScoped<TaskService>();
 builder.Services.AddScoped<CategoryRuleService>();
 builder.Services.AddScoped<ImportService>();
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<PayeeService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -41,6 +43,11 @@ using (var scope = app.Services.CreateScope())
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
     await db.Database.MigrateAsync();
+}
+// Bénéficiaires des dépenses importées avant leur introduction.
+using (var scope = app.Services.CreateScope())
+{
+    await scope.ServiceProvider.GetRequiredService<PayeeService>().BackfillImportedAsync();
 }
 app.Logger.LogInformation("Base de données : {DbPath}", Path.GetFullPath(dbPath));
 

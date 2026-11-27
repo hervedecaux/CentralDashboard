@@ -1,0 +1,116 @@
+@page "/comptes"
+@inject AccountService Accounts
+
+<PageTitle>Comptes et cartes · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Comptes et cartes</h1>
+</header>
+
+<p class="muted">
+    Les comptes et cartes présents dans un relevé importé sont ajoutés automatiquement.
+    Ajoutez ici une carte sans relevé téléchargeable (ex. carte de crédit) : ses dépenses se saisissent à la main,
+    en choisissant cette carte dans le champ « Compte / carte ».
+</p>
+
+@if (items is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    <div class="card table-card">
+        <table class="table">
+            <thead>
+                <tr><th>Libellé affiché</th><th>Type</th><th>Origine</th><th class="col-justify-end">Dépenses</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var s in items)
+                {
+                    var a = s.Account;
+                    @if (editing?.Id == a.Id)
+                    {
+                        <tr>
+                            <td><input @bind="editing.Label" @bind:event="oninput" class="label-input" /></td>
+                            <td>
+                                <select @bind="editing.Kind">
+                                    @foreach (var k in Enum.GetValues<AccountKind>()) { <option value="@k">@k.Label()</option> }
+                                </select>
+                            </td>
+                            <td class="muted small">@(a.ImportId ?? "Saisie manuelle")</td>
+                            <td class="col-justify-end">@s.ExpenseCount</td>
+                            <td class="col-justify-end nowrap">
+                                <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(editing.Label)" @onclick="SaveEdit">Enregistrer</button>
+                                <button class="btn btn-ghost" @onclick="() => editing = null">Annuler</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td><strong>@a.Label</strong></td>
+                            <td>@a.Kind.Label()</td>
+                            <td class="muted small">@(a.ImportId is null ? "Saisie manuelle" : $"Relevé : {a.ImportId}")</td>
+                            <td class="col-justify-end">
+                                @if (s.ExpenseCount > 0) { <a href="depenses?compte=@a.Id">@s.ExpenseCount</a> } else { <span class="muted">0</span> }
+                            </td>
+                            <td class="col-justify-end nowrap">
+                                <button class="link small" @onclick="() => StartEdit(a)">Modifier</button>
+                                @if (a.Id != Account.MainAccountId && s.ExpenseCount == 0)
+                                {
+                                    <span class="muted"> · </span><DeleteButton OnConfirm="() => Delete(a.Id)" />
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card rule-draft">
+        <strong>Ajouter une carte ou un compte</strong>
+        <input @bind="newLabel" @bind:event="oninput" placeholder="ex. Carte de crédit Visa" />
+        <select @bind="newKind">
+            @foreach (var k in Enum.GetValues<AccountKind>()) { <option value="@k">@k.Label()</option> }
+        </select>
+        <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(newLabel)" @onclick="Add">Ajouter</button>
+    </div>
+    @if (error is not null) { <p class="negative">@error</p> }
+}
+
+@code {
+    private List<AccountSummary>? items;
+    private Account? editing;
+    private string newLabel = "";
+    private AccountKind newKind = AccountKind.CreditCard;
+    private string? error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load() => items = await Accounts.GetSummariesAsync();
+
+    private void StartEdit(Account a) => editing = new Account { Id = a.Id, Label = a.Label, Kind = a.Kind };
+
+    private async Task SaveEdit()
+    {
+        await Accounts.SaveAsync(editing!);
+        editing = null;
+        await Load();
+    }
+
+    private async Task Add()
+    {
+        await Accounts.SaveAsync(new Account { Label = newLabel, Kind = newKind });
+        newLabel = "";
+        await Load();
+    }
+
+    private async Task Delete(int id)
+    {
+        error = null;
+        try { await Accounts.DeleteAsync(id); }
+        catch (InvalidOperationException ex) { error = ex.Message; }
+        await Load();
+    }
+}
