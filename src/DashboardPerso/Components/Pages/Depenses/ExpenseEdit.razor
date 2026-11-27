@@ -6,10 +6,10 @@
 @inject PayeeService Payees
 @inject NavigationManager Nav
 
-<PageTitle>@(IsNew ? "Nouvelle dépense" : "Modifier la dépense") · Dashboard perso</PageTitle>
+<PageTitle>@Title · Dashboard perso</PageTitle>
 
 <header class="page-header">
-    <h1>@(IsNew ? "Nouvelle dépense" : "Modifier la dépense")</h1>
+    <h1>@Title</h1>
 </header>
 
 @if (model is null)
@@ -23,8 +23,8 @@ else
             <DataAnnotationsValidator />
 
             <div class="segmented">
-                <button type="button" class="@(model.IsIncome ? "" : "active")" @onclick="() => model.IsIncome = false">Dépense</button>
-                <button type="button" class="@(model.IsIncome ? "active" : "")" @onclick="() => model.IsIncome = true">Recette</button>
+                <button type="button" class="@(model.IsIncome ? "" : "active")" @onclick="() => SetIncome(false)">Dépense</button>
+                <button type="button" class="@(model.IsIncome ? "active" : "")" @onclick="() => SetIncome(true)">Recette</button>
             </div>
 
             <div class="form-row">
@@ -56,14 +56,7 @@ else
             </div>
 
             <div class="form-row">
-                @if (model.IsIncome)
-                {
-                    <label>
-                        Catégorie
-                        <select disabled><option>Recette (hors budget)</option></select>
-                    </label>
-                }
-                else if (splitting)
+                @if (splitting)
                 {
                     <label>
                         Catégorie
@@ -76,8 +69,12 @@ else
                         Catégorie
                         <InputSelect @bind-Value="model.CategoryId" disabled="@model.IsTransfer">
                             <option value="">Sans catégorie</option>
-                            <CategoryOptions Categories="categories" />
+                            <CategoryOptions Categories="categories" Kind="Kind" />
                         </InputSelect>
+                        @if (model.IsIncome && !categories.Any(c => c.IsIncome))
+                        {
+                            <span class="muted small">Aucune catégorie de recettes : <a href="budget/nouveau?type=recette">en créer une</a>.</span>
+                        }
                         @if (!model.IsTransfer)
                         {
                             <button type="button" class="link small left" @onclick="StartSplit">Ventiler sur plusieurs catégories</button>
@@ -92,7 +89,7 @@ else
                 </label>
             </div>
 
-            @if (splitting && !model.IsIncome && !model.IsTransfer)
+            @if (splitting && !model.IsTransfer)
             {
                 <div class="split-editor">
                     <strong>Ventilation</strong>
@@ -101,7 +98,7 @@ else
                         <div class="split-row">
                             <select value="@part.CategoryId" @onchange="e => part.CategoryId = int.TryParse(e.Value as string, out var c) ? c : null">
                                 <option value="">Sans catégorie</option>
-                                <CategoryOptions Categories="categories" />
+                                <CategoryOptions Categories="categories" Kind="Kind" />
                             </select>
                             <input type="number" step="0.01" @bind="part.Amount" @bind:event="oninput" />
                             <button type="button" class="link small" title="Retirer" @onclick="() => parts.Remove(part)">✕</button>
@@ -153,6 +150,9 @@ else
     [Parameter] public int? Id { get; set; }
     [SupplyParameterFromQuery(Name = "compte")] public int? AccountQuery { get; set; }
     private bool IsNew => Id is null;
+    private string Title => model?.IsIncome == true
+        ? (IsNew ? "Nouvelle recette" : "Modifier la recette")
+        : (IsNew ? "Nouvelle dépense" : "Modifier la dépense");
     private Expense? model;
     private List<BudgetCategory> categories = [];
     private List<Account> accounts = [];
@@ -171,6 +171,18 @@ else
     private List<Part> parts = [];
     private bool splitting;
     private decimal Remaining => model!.Amount - parts.Sum(p => p.Amount);
+
+    private CategoryKind Kind => model?.IsIncome == true ? CategoryKind.Income : CategoryKind.Expense;
+
+    /// <summary>Passe de dépense à recette (ou l'inverse) : les catégories de l'autre type sont retirées.</summary>
+    private void SetIncome(bool income)
+    {
+        if (model is null || model.IsIncome == income) return;
+        model.IsIncome = income;
+        bool Fits(int? id) => id is null || categories.FirstOrDefault(c => c.Id == id)?.Kind == Kind;
+        if (!Fits(model.CategoryId)) model.CategoryId = null;
+        foreach (var p in parts.Where(p => !Fits(p.CategoryId))) p.CategoryId = null;
+    }
 
     private void StartSplit()
     {
@@ -213,7 +225,7 @@ else
     private async Task Save()
     {
         error = null;
-        model!.Splits = splitting && !model.IsIncome && !model.IsTransfer
+        model!.Splits = splitting && !model.IsTransfer
             ? parts.Select(p => new ExpenseSplit { CategoryId = p.CategoryId, Amount = p.Amount }).ToList()
             : [];
         try
@@ -239,7 +251,7 @@ else
             model.IsTransfer = true;
             payeeHint = "Transfert par défaut pour ce bénéficiaire.";
         }
-        else if (payee.DefaultCategoryId is { } cat)
+        else if (payee.DefaultCategoryId is { } cat && categories.FirstOrDefault(c => c.Id == cat)?.Kind == Kind)
         {
             model.CategoryId = cat;
             payeeHint = "Catégorie par défaut du bénéficiaire appliquée.";

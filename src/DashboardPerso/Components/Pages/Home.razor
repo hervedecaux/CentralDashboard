@@ -32,6 +32,14 @@ else
             <span class="stat-value @(planned - spent < 0 ? "negative" : "")">@((planned - spent).ToString("C"))</span>
             <ProgressBar Percent="@(planned > 0 ? (double)(spent / planned * 100) : 0)" />
         </div>
+        <div class="card stat">
+            <span class="stat-label">Recettes ce mois-ci</span>
+            <span class="stat-value positive">@income.ToString("C")</span>
+            <span class="muted">
+                @if (plannedIncome > 0) { @($"sur {plannedIncome.ToString("C")} prévues · solde {(income - spent >= 0 ? "+" : "")}{(income - spent).ToString("C")}") }
+                else { @($"solde du mois {(income - spent >= 0 ? "+" : "")}{(income - spent).ToString("C")}") }
+            </span>
+        </div>
         <BalanceCard />
         <div class="card stat">
             <span class="stat-label">Tâches ouvertes</span>
@@ -128,7 +136,7 @@ else
     private List<BudgetLine>? lines;
     private List<TaskItem>? upcoming;
     private List<Expense>? latest;
-    private decimal spent, planned, ytdSpent, ytdPlanned;
+    private decimal spent, planned, ytdSpent, ytdPlanned, income, plannedIncome;
     private int openTasks, overdueTasks;
 
     protected override async Task OnInitializedAsync()
@@ -137,6 +145,9 @@ else
         lines = await Budget.GetMonthSummaryAsync(today.Year, today.Month);
         spent = await Expenses.GetMonthTotalAsync(today.Year, today.Month);
         planned = lines.Sum(l => l.Planned);
+        var month = await Budget.GetOverviewAsync(new BudgetPeriod(today.Year, today.Month));
+        income = month.ActualIncome;
+        plannedIncome = month.PlannedIncome;
 
         var year = await Budget.GetSummaryAsync(new BudgetPeriod(today.Year, null));
         ytdSpent = year.Sum(l => l.Spent);

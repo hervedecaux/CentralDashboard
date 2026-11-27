@@ -50,7 +50,7 @@ else
             @spent.Count() dépense(s) · total <strong>@CategoryAmount(spent).ToString("C")</strong>
             @if (showIncome && Filtered.Any(e => e.IsIncome && !e.IsTransfer))
             {
-                <span> · recettes <span class="positive">@Filtered.Where(e => e.IsIncome && !e.IsTransfer).Sum(e => e.Amount).ToString("C")</span></span>
+                <span> · recettes <span class="positive">@CategoryAmount(Filtered.Where(e => e.IsIncome && !e.IsTransfer)).ToString("C")</span></span>
             }
             @if (showTransfers && Filtered.Any(e => e.IsTransfer))
             {
@@ -78,9 +78,9 @@ else
                 {
                     <span class="badge transfer" title="Hors budget">Transfert</span>
                 }
-                else if (context.IsIncome)
+                else if (context.IsIncome && context.CategoryId is null && !context.IsSplit)
                 {
-                    <span class="badge income">Recette</span>
+                    <span class="badge income" title="Recette sans catégorie">Recette</span>
                 }
                 else if (context.IsSplit)
                 {
@@ -134,7 +134,7 @@ else
             q = categoryFilter switch
             {
                 "" => q,
-                "-1" => q.Where(e => e.CategoryId == null && !e.IsTransfer && !e.IsIncome && !e.IsSplit),
+                "-1" => q.Where(e => e.CategoryId == null && !e.IsTransfer && !e.IsSplit),
                 // Une catégorie principale inclut ses sous-catégories ; une dépense ventilée y figure si une part y est.
                 var id => q.Where(e => InCategory(e.Category, int.Parse(id)) || e.Splits.Any(x => InCategory(x.Category, int.Parse(id)))),
             };

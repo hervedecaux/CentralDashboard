@@ -66,6 +66,13 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 - **Dépenses et règles d'import** peuvent viser une catégorie principale ou une sous-catégorie. Filtrer les dépenses sur une catégorie principale inclut ses sous-catégories.
 - **Supprimer une catégorie** : ses dépenses et ses règles peuvent être rattachées à une autre catégorie. Sinon, les dépenses restent sans catégorie et les règles sont supprimées. Une catégorie qui a des sous-catégories ne peut pas être supprimée tant qu'elle en a.
 
+## Recettes
+
+- **Catégories de recettes** : sur la page Budget, « + Catégorie de recettes » (ex. Salaire › Primes, Revenus locatifs, Remboursements santé). Le montant saisi est la recette **prévue sur l'année**. Une sous-catégorie prend le type de sa catégorie principale. Le type d'une catégorie ne peut plus changer une fois qu'elle a des opérations.
+- **Budget** : la page affiche les recettes (prévu, encaissé, écart) au-dessus des dépenses, ainsi que le solde recettes − dépenses, réel et prévu. En vue « Année », le tableau **Recettes mois par mois** permet de suivre les revenus variables, avec la moyenne sur les mois écoulés.
+- **Saisie et import** : une recette ne propose que des catégories de recettes, une dépense que des catégories de dépenses. Les règles d'import et la catégorie par défaut d'un bénéficiaire s'appliquent aussi aux recettes, selon le type de la catégorie visée. Une recette peut être ventilée.
+- Les transferts (ex. virement depuis l'épargne) ne comptent ni en recettes ni en dépenses.
+
 > Mise à jour depuis une version précédente : les anciens budgets mensuels sont automatiquement multipliés par 12 au premier lancement.
 
 ## Comptes, cartes et bénéficiaires
@@ -77,7 +84,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 ## Ventilation et solde
 
 - **Ventiler une dépense** : sur la fiche d'une dépense, « Ventiler sur plusieurs catégories » permet de répartir le montant en plusieurs parts. Leur somme doit égaler le montant, et chaque part compte dans le budget de sa catégorie.
-- **Recettes** : le choix Dépense / Recette se fait en haut de la fiche. Les recettes s'affichent en vert avec un « + » dans la liste.
+- **Recettes** : le choix Dépense / Recette se fait en haut de la fiche. Les recettes s'affichent en vert avec un « + » dans la liste. Voir la section Recettes pour leur suivi dans le budget.
 - **Solde théorique** : dans **Comptes et cartes**, saisissez le solde du compte courant à une date (fin de journée). Le solde théorique = ce solde + recettes − dépenses et transferts du compte courant postérieurs. Il est comparé au solde indiqué par la banque dans le dernier relevé importé, et affiché sur l'accueil. Un écart signale en général des opérations manquantes.
 
 ## Importer un relevé bancaire (Crédit Agricole)

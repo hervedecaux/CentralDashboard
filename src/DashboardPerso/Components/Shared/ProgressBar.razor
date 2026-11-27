@@ -1,5 +1,5 @@
 @{
-    var cls = Over || Percent > 100 ? "over" : Percent > 85 ? "warn" : "";
+    var cls = Neutral ? "" : Over || Percent > 100 ? "over" : Percent > 85 ? "warn" : "";
     var width = Math.Min(Percent, 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
     // La couleur de la catégorie n'est utilisée que tant que le budget n'est pas presque atteint.
     var bg = cls == "" && Color is not null ? $"background:{Color};" : "";
@@ -13,4 +13,6 @@
     [Parameter] public string? Color { get; set; }
     /// <summary>Force l'affichage « dépassé » (ex. dépense sur une catégorie sans budget).</summary>
     [Parameter] public bool Over { get; set; }
+    /// <summary>Pas d'alerte au-delà de 85 / 100 % (ex. recettes : les dépasser est une bonne nouvelle).</summary>
+    [Parameter] public bool Neutral { get; set; }
 }

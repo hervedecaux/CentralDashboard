@@ -20,7 +20,7 @@ public class PayeeService(IDbContextFactory<AppDbContext> dbFactory)
                 Count = g.Count(),
                 Total = g.Sum(e => e.IsIncome ? -e.Amount : e.Amount),
                 Last = g.Max(e => e.Date),
-                Uncategorized = g.Count(e => e.CategoryId == null && !e.IsTransfer && !e.IsIncome && !e.Splits.Any()),
+                Uncategorized = g.Count(e => e.CategoryId == null && !e.IsTransfer && !e.Splits.Any()),
             })
             .ToDictionaryAsync(x => x.Key);
 
@@ -83,11 +83,16 @@ public class PayeeService(IDbContextFactory<AppDbContext> dbFactory)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         var payee = await db.Payees.AsNoTracking().FirstAsync(p => p.Id == id);
-        var query = db.Expenses.Where(e => e.PayeeId == id && e.CategoryId == null && !e.IsTransfer && !e.IsIncome && !e.Splits.Any());
+        var query = db.Expenses.Where(e => e.PayeeId == id && e.CategoryId == null && !e.IsTransfer && !e.Splits.Any());
         if (payee.DefaultIsTransfer)
             return await query.ExecuteUpdateAsync(s => s.SetProperty(e => e.IsTransfer, true));
         if (payee.DefaultCategoryId is { } cat)
-            return await query.ExecuteUpdateAsync(s => s.SetProperty(e => e.CategoryId, cat));
+        {
+            // Une catégorie de recettes ne s'applique qu'aux recettes, et inversement.
+            var income = await db.BudgetCategories.Where(c => c.Id == cat).Select(c => c.Kind).FirstAsync() == CategoryKind.Income;
+            return await query.Where(e => e.IsIncome == income)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.CategoryId, cat));
+        }
         return 0;
     }
 

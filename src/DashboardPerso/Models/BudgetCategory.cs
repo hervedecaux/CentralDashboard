@@ -3,6 +3,13 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DashboardPerso.Models;
 
+/// <summary>Une catégorie suit soit des dépenses, soit des recettes.</summary>
+public enum CategoryKind
+{
+    Expense = 0,
+    Income = 1,
+}
+
 /// <summary>
 /// Une catégorie de budget, avec un montant prévu par an.
 /// Une catégorie peut avoir des sous-catégories (un seul niveau) :
@@ -17,11 +24,17 @@ public class BudgetCategory
     public string Name { get; set; } = "";
 
     /// <summary>
-    /// Budget annuel propre à la catégorie. Pour une catégorie principale qui a des sous-catégories,
+    /// Budget annuel propre à la catégorie (pour une catégorie de recettes : recettes prévues sur l'année). Pour une catégorie principale qui a des sous-catégories,
     /// c'est la part « hors sous-catégories » : le total s'obtient en y ajoutant celui des sous-catégories.
     /// </summary>
     [Range(0, 10_000_000, ErrorMessage = "Le montant doit être positif.")]
     public decimal AnnualBudget { get; set; }
+
+    /// <summary>Dépense ou recette. Une sous-catégorie a toujours le type de sa catégorie principale.</summary>
+    public CategoryKind Kind { get; set; } = CategoryKind.Expense;
+
+    [NotMapped]
+    public bool IsIncome => Kind == CategoryKind.Income;
 
     /// <summary>Couleur d'affichage (format #RRGGBB).</summary>
     [StringLength(7)]
