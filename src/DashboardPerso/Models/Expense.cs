@@ -20,4 +20,11 @@ public class Expense
 
     [StringLength(500)]
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Empreinte de l'opération bancaire d'origine (null pour une saisie manuelle).
+    /// Sert à ne pas importer deux fois la même opération.
+    /// </summary>
+    [StringLength(64)]
+    public string? ImportKey { get; set; }
 }

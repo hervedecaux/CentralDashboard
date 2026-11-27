@@ -56,7 +56,31 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 | **Accueil** (`/`) | Dépensé ce mois-ci vs prévu, reste à dépenser, tâches ouvertes et en retard, budget par catégorie, prochaines tâches, dernières dépenses. |
 | **Budget** (`/budget`) | Catégories avec montant mensuel et couleur, suivi prévu / dépensé / reste par mois, barres de consommation. |
 | **Dépenses** (`/depenses`) | Liste par mois, filtre par catégorie, tri, pagination, total. Ajout, modification, suppression. |
+| **Import** (`/depenses/import`) | Import du relevé CSV du Crédit Agricole : aperçu, catégories proposées par des règles, doublons écartés. |
 | **Tâches** (`/taches`) | Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
+
+## Importer un relevé bancaire (Crédit Agricole)
+
+1. Sur le site du Crédit Agricole, téléchargez la liste des opérations du compte au format **CSV**.
+2. Dans l'application : **Dépenses → Importer un relevé**, puis choisissez le fichier.
+3. Un aperçu s'affiche : vous pouvez décocher des lignes, corriger un libellé ou une catégorie. Rien n'est enregistré avant de cliquer sur **Importer**.
+
+Ce qui est importé :
+
+- **Les débits du compte** deviennent des dépenses. Les crédits (salaire, remboursements…) sont affichés mais pas importés.
+- **Les sections « cartes »** en fin de fichier (cartes à débit différé) sont ignorées : le total mensuel de la carte apparaît déjà comme un débit du compte.
+- **Doublons** : chaque opération importée garde une empreinte (date, montant, libellé complet). Réimporter un fichier qui chevauche le précédent n'ajoute que les nouvelles opérations. Si une dépense saisie à la main a la même date et le même montant, la ligne est marquée « doublon possible » et décochée.
+- **Catégories** : la page **Règles de catégorie** associe un texte (ex. `ORANGE SA`) à une catégorie. Les majuscules et les accents ne comptent pas, et la règle la plus longue l'emporte. Le lien **+ règle** de l'aperçu crée une règle à partir d'une ligne et l'applique aussitôt aux autres.
+
+Le libellé bancaire complet est conservé dans les notes de chaque dépense importée.
+
+## Tests
+
+```bash
+dotnet test
+```
+
+Les tests utilisent un relevé **fictif** (`tests/DashboardPerso.Tests/Fixtures/ca-anonymise.csv`). Ne mettez jamais un vrai relevé dans le dépôt.
 
 ## Organisation du code
 
@@ -70,9 +94,11 @@ dashboard-perso/
     ├── Data/AppDbContext.cs       Contexte EF Core
     ├── Data/Migrations/           Schéma de la base, versionné
     ├── Services/                  Accès aux données (BudgetService, ExpenseService, TaskService)
+    ├── Services/Import/           Lecture du CSV bancaire, doublons, règles de catégorie
     ├── Components/Pages/          Accueil, Budget/, Depenses/, Taches/
     ├── Components/Shared/         Sélecteur de mois, barre de progression, pagination, bouton supprimer
     └── wwwroot/app.css            Styles (thème clair / sombre automatique selon macOS)
+tests/DashboardPerso.Tests/        Tests xUnit (lecture CSV, doublons, règles)
 ```
 
 Les pages ne parlent jamais directement à la base : elles appellent les services, qui renvoient de simples `List<T>`.

@@ -2,6 +2,7 @@ using System.Globalization;
 using DashboardPerso.Components;
 using DashboardPerso.Data;
 using DashboardPerso.Services;
+using DashboardPerso.Services.Import;
 using Microsoft.EntityFrameworkCore;
 
 // Affichage en français (dates, montants en euros).
@@ -26,6 +27,8 @@ builder.Services.AddDbContextFactory<AppDbContext>(o => o.UseSqlite($"Data Sourc
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<ExpenseService>();
 builder.Services.AddScoped<TaskService>();
+builder.Services.AddScoped<CategoryRuleService>();
+builder.Services.AddScoped<ImportService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

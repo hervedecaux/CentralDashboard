@@ -78,6 +78,27 @@ namespace DashboardPerso.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DashboardPerso.Models.CategoryRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("CategoryRules");
+                });
+
             modelBuilder.Entity("DashboardPerso.Models.Expense", b =>
                 {
                     b.Property<int>("Id")
@@ -91,6 +112,10 @@ namespace DashboardPerso.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImportKey")
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Label")
@@ -107,6 +132,8 @@ namespace DashboardPerso.Data.Migrations
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("Date");
+
+                    b.HasIndex("ImportKey");
 
                     b.ToTable("Expenses");
                 });
@@ -146,6 +173,17 @@ namespace DashboardPerso.Data.Migrations
                     b.HasIndex("Status");
 
                     b.ToTable("Tasks");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.CategoryRule", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.BudgetCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("DashboardPerso.Models.Expense", b =>

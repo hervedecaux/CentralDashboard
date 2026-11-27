@@ -8,6 +8,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BudgetCategory> BudgetCategories => Set<BudgetCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
+    public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
@@ -24,6 +25,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Expense>().HasIndex(e => e.Date);
+        modelBuilder.Entity<Expense>().HasIndex(e => e.ImportKey);
+
+        modelBuilder.Entity<CategoryRule>()
+            .HasOne(r => r.Category)
+            .WithMany()
+            .HasForeignKey(r => r.CategoryId)
+            .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<TaskItem>().HasIndex(t => t.Status);
 
         // Quelques catégories de départ, modifiables depuis la page Budget.
