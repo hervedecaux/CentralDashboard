@@ -1,0 +1,120 @@
+@page "/donnees"
+@using DashboardPerso.Services.Import
+@inject ImportService Import
+@inject AccountService Accounts
+
+<PageTitle>Données · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Données</h1>
+</header>
+
+<div class="card form-card danger-zone">
+    <h2>Effacer les opérations importées</h2>
+    <p class="muted">
+        Supprime les opérations venues d'un relevé bancaire, par exemple pour les réimporter proprement.
+        Sont <strong>conservés</strong> : catégories et budgets, règles d'import, bénéficiaires et leurs catégories par défaut,
+        comptes et cartes, solde initial, et les opérations saisies à la main.
+    </p>
+
+    <div class="form-row">
+        <label>
+            Compte / carte
+            <select value="@(accountId?.ToString() ?? "")" @onchange="e => Change(() => accountId = int.TryParse(e.Value as string, out var id) ? id : null)">
+                <option value="">Tous</option>
+                @foreach (var a in accounts) { <option value="@a.Id">@a.Label</option> }
+            </select>
+        </label>
+        <label>
+            Du
+            <input type="date" value="@from?.ToString("yyyy-MM-dd")" @onchange="e => Change(() => from = ParseDate(e.Value))" />
+        </label>
+        <label>
+            Au
+            <input type="date" value="@to?.ToString("yyyy-MM-dd")" @onchange="e => Change(() => to = ParseDate(e.Value))" />
+        </label>
+    </div>
+
+    @if (summary is null)
+    {
+        <p class="muted">Calcul…</p>
+    }
+    else if (summary.Count == 0)
+    {
+        <p class="muted">Aucune opération importée ne correspond.</p>
+    }
+    else
+    {
+        <p>
+            <strong>@summary.Count opération(s) importée(s)</strong>
+            du @summary.First?.ToString("dd/MM/yyyy") au @summary.Last?.ToString("dd/MM/yyyy") :
+            débits @summary.Debits.ToString("C"), crédits <span class="positive">@summary.Credits.ToString("C")</span>
+            @if (summary.Transfers > 0) { <span>, dont @summary.Transfers transfert(s)</span> }.
+        </p>
+        @if (ClearsBankBalance)
+        {
+            <p class="muted small">Le solde banque mémorisé du compte courant sera aussi effacé ; il reviendra au prochain import.</p>
+        }
+        <label>
+            <span>Pour confirmer, tapez <strong>EFFACER</strong></span>
+            <input @bind="confirmation" @bind:event="oninput" autocomplete="off" />
+        </label>
+        <div class="form-actions">
+            <button class="btn btn-danger" disabled="@(confirmation.Trim() != "EFFACER" || busy)" @onclick="Delete">
+                Effacer @summary.Count opération(s)
+            </button>
+        </div>
+    }
+    @if (message is not null) { <p class="positive">@message</p> }
+</div>
+
+@code {
+    private List<Account> accounts = [];
+    private int? accountId;
+    private DateOnly? from;
+    private DateOnly? to;
+    private ImportedSummary? summary;
+    private string confirmation = "";
+    private string? message;
+    private bool busy;
+
+    private ImportedFilter Filter => new(accountId, from, to);
+
+    private bool ClearsBankBalance =>
+        (accountId is null || accountId == Account.MainAccountId) && from is null && to is null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        accounts = await Accounts.GetAllAsync();
+        await Refresh();
+    }
+
+    private static DateOnly? ParseDate(object? value) =>
+        DateOnly.TryParse(value as string, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+
+    private async Task Change(Action apply)
+    {
+        apply();
+        confirmation = "";
+        message = null;
+        await Refresh();
+    }
+
+    private async Task Refresh() => summary = await Import.GetImportedSummaryAsync(Filter);
+
+    private async Task Delete()
+    {
+        busy = true;
+        try
+        {
+            var n = await Import.DeleteImportedAsync(Filter);
+            message = $"{n} opération(s) effacée(s).";
+            confirmation = "";
+            await Refresh();
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

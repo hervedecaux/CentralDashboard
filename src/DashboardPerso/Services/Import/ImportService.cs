@@ -46,6 +46,15 @@ public class ImportRow
     public string Label { get; set; } = "";
 }
 
+/// <summary>Opérations importées à effacer : toutes, ou celles d'un compte / d'une carte et/ou d'une période (bornes incluses).</summary>
+public record ImportedFilter(int? AccountId = null, DateOnly? From = null, DateOnly? To = null)
+{
+    public bool IsEverything => AccountId is null && From is null && To is null;
+}
+
+/// <summary>Ce que l'effacement toucherait.</summary>
+public record ImportedSummary(int Count, int Income, int Transfers, decimal Debits, decimal Credits, DateOnly? First, DateOnly? Last);
+
 /// <summary>Aperçu d'un relevé : lignes et solde indiqué par la banque.</summary>
 public record ImportPreview(List<ImportRow> Rows, decimal? BankBalance, DateOnly? BankBalanceDate);
 
@@ -173,6 +182,56 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         }
         await db.SaveChangesAsync();
         return added;
+    }
+
+    /// <summary>Résumé des opérations importées correspondant au filtre (les saisies manuelles ne sont jamais comptées).</summary>
+    public async Task<ImportedSummary> GetImportedSummaryAsync(ImportedFilter filter)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var list = await Imported(db, filter)
+            .Select(e => new { e.Date, e.Amount, e.IsIncome, e.IsTransfer })
+            .ToListAsync();
+        return new ImportedSummary(
+            list.Count,
+            list.Count(e => e.IsIncome),
+            list.Count(e => e.IsTransfer),
+            list.Where(e => !e.IsIncome).Sum(e => e.Amount),
+            list.Where(e => e.IsIncome).Sum(e => e.Amount),
+            list.Count > 0 ? list.Min(e => e.Date) : null,
+            list.Count > 0 ? list.Max(e => e.Date) : null);
+    }
+
+    /// <summary>
+    /// Efface les opérations importées correspondant au filtre (et leurs ventilations), pour pouvoir les réimporter.
+    /// Catégories, budgets, règles, bénéficiaires, comptes, solde initial et saisies manuelles sont conservés.
+    /// Quand toutes les opérations importées du compte courant sont effacées, le solde banque mémorisé l'est aussi.
+    /// Renvoie le nombre d'opérations effacées.
+    /// </summary>
+    public async Task<int> DeleteImportedAsync(ImportedFilter filter)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var ids = Imported(db, filter).Select(e => e.Id);
+        await db.ExpenseSplits.Where(x => ids.Contains(x.ExpenseId)).ExecuteDeleteAsync();
+        var deleted = await Imported(db, filter).ExecuteDeleteAsync();
+
+        var mainCleared = (filter.AccountId is null || filter.AccountId == Account.MainAccountId)
+                          && filter.From is null && filter.To is null;
+        if (mainCleared)
+            await db.Accounts.Where(a => a.Id == Account.MainAccountId)
+                .ExecuteUpdateAsync(x => x.SetProperty(a => a.BankBalance, (decimal?)null)
+                                          .SetProperty(a => a.BankBalanceDate, (DateOnly?)null));
+        await tx.CommitAsync();
+        return deleted;
+    }
+
+    private static IQueryable<Expense> Imported(AppDbContext db, ImportedFilter f)
+    {
+        var q = db.Expenses.Where(e => e.ImportKey != null);
+        if (f.AccountId is { } a) q = q.Where(e => e.AccountId == a);
+        if (f.From is { } from) q = q.Where(e => e.Date >= from);
+        if (f.To is { } to) q = q.Where(e => e.Date <= to);
+        return q;
     }
 
     /// <summary>
