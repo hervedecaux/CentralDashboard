@@ -22,12 +22,15 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 // Base SQLite locale. Par défaut : ~/Library/Application Support/DashboardPerso/dashboard.db sur macOS.
 // Modifiable via "Database:Path" dans appsettings.json.
+// En développement (dotnet run), appsettings.Development.json utilise dashboard-dev.db, à côté :
+// les essais ne touchent pas aux données de la version installée.
 var dbPath = builder.Configuration["Database:Path"];
 if (string.IsNullOrWhiteSpace(dbPath))
 {
     var dataDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DashboardPerso");
-    dbPath = Path.Combine(dataDir, "dashboard.db");
+    var fileName = builder.Configuration["Database:FileName"];
+    dbPath = Path.Combine(dataDir, string.IsNullOrWhiteSpace(fileName) ? "dashboard.db" : fileName);
 }
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
 
@@ -59,7 +62,8 @@ using (var scope = app.Services.CreateScope())
 {
     await scope.ServiceProvider.GetRequiredService<PayeeService>().BackfillImportedAsync();
 }
-app.Logger.LogInformation("Base de données : {DbPath}", Path.GetFullPath(dbPath));
+app.Logger.LogInformation("Environnement : {Environment} · base de données : {DbPath}",
+    app.Environment.EnvironmentName, Path.GetFullPath(dbPath));
 
 if (!app.Environment.IsDevelopment())
 {
