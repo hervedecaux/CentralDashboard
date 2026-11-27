@@ -3,10 +3,10 @@
 @inject BudgetService Budget
 @inject NavigationManager Nav
 
-<PageTitle>@(IsNew ? "Nouvelle catégorie" : "Modifier la catégorie") · Dashboard perso</PageTitle>
+<PageTitle>@Title · Dashboard perso</PageTitle>
 
 <header class="page-header">
-    <h1>@(IsNew ? "Nouvelle catégorie" : "Modifier la catégorie")</h1>
+    <h1>@Title</h1>
 </header>
 
 @if (model is null)
@@ -26,54 +26,153 @@ else
             </label>
 
             <label>
-                Budget mensuel (€)
-                <InputNumber @bind-Value="model.MonthlyBudget" step="0.01" />
-                <ValidationMessage For="() => model.MonthlyBudget" />
+                Catégorie parente
+                @if (childCount > 0)
+                {
+                    <select disabled><option>Aucune (catégorie principale)</option></select>
+                    <span class="muted small">Elle a @childCount sous-catégorie(s) : elle reste une catégorie principale.</span>
+                }
+                else
+                {
+                    <InputSelect @bind-Value="model.ParentId">
+                        <option value="">Aucune (catégorie principale)</option>
+                        @foreach (var p in parents)
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </InputSelect>
+                }
             </label>
 
-            <label>
-                Couleur
-                <InputText type="color" @bind-Value="model.Color" />
-            </label>
+            <div class="form-row">
+                <label>
+                    @(childCount > 0 ? "Budget annuel non réparti (€)" : "Budget annuel (€)")
+                    <InputNumber @bind-Value="model.AnnualBudget" step="0.01" />
+                    <ValidationMessage For="() => model.AnnualBudget" />
+                    <span class="muted small">
+                        @if (childCount > 0)
+                        {
+                            @($"S'ajoute aux budgets des sous-catégories ({childrenBudget.ToString("C")}). Total : {(childrenBudget + model.AnnualBudget).ToString("C")}.")
+                        }
+                        else
+                        {
+                            @($"Soit {(model.AnnualBudget / 12).ToString("C")} par mois.")
+                        }
+                    </span>
+                </label>
+                <label>
+                    Couleur
+                    <InputText type="color" @bind-Value="model.Color" />
+                </label>
+            </div>
+
+            @if (error is not null) { <p class="negative">@error</p> }
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Enregistrer</button>
                 <a class="btn btn-ghost" href="budget">Annuler</a>
-                @if (!IsNew)
-                {
-                    <span class="spacer"></span>
-                    <DeleteButton OnConfirm="Delete" />
-                }
             </div>
-            @if (!IsNew)
-            {
-                <p class="muted small">Supprimer une catégorie conserve ses dépenses, qui deviennent « sans catégorie ».</p>
-            }
         </EditForm>
     </div>
+
+    @if (!IsNew)
+    {
+        <div class="card form-card danger-zone">
+            <h2>Supprimer la catégorie</h2>
+            @if (childCount > 0)
+            {
+                <p class="muted">Cette catégorie a des sous-catégories. Supprimez-les ou rattachez-les à une autre catégorie avant de la supprimer.</p>
+            }
+            else
+            {
+                @if (usage.Expenses + usage.Rules > 0)
+                {
+                    <label>
+                        @($"Que faire de ses {usage.Expenses} dépense(s) et {usage.Rules} règle(s) ?")
+                        <select @bind="reassignTo">
+                            <option value="">Dépenses sans catégorie, règles supprimées</option>
+                            @foreach (var c in others)
+                            {
+                                <option value="@c.Id">Les rattacher à @c.FullName</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <p class="muted">Aucune dépense ni règle n'utilise cette catégorie.</p>
+                }
+                <div class="form-actions">
+                    <DeleteButton OnConfirm="Delete" />
+                </div>
+            }
+        </div>
+    }
 }
 
 @code {
     [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "parent")] public int? ParentQuery { get; set; }
+
     private bool IsNew => Id is null;
+    private string Title => IsNew ? (model?.ParentId is not null ? "Nouvelle sous-catégorie" : "Nouvelle catégorie") : "Modifier la catégorie";
+
     private BudgetCategory? model;
+    private List<BudgetCategory> parents = [];
+    private List<BudgetCategory> others = [];
+    private int childCount;
+    private decimal childrenBudget;
+    private (int Expenses, int Rules) usage;
+    private string reassignTo = "";
     private bool notFound;
+    private string? error;
 
     protected override async Task OnParametersSetAsync()
     {
-        model = IsNew ? new BudgetCategory() : await Budget.GetAsync(Id!.Value);
+        parents = await Budget.GetTopLevelAsync(exceptId: Id);
+        if (IsNew)
+        {
+            var parent = parents.FirstOrDefault(p => p.Id == ParentQuery);
+            model = new BudgetCategory { ParentId = parent?.Id, Color = parent?.Color ?? "#4f6bed" };
+            return;
+        }
+
+        model = await Budget.GetAsync(Id!.Value);
         notFound = model is null;
+        if (model is null) return;
+        childCount = model.Children.Count;
+        childrenBudget = model.Children.Sum(c => c.AnnualBudget);
+        model.Children = [];   // évite de renvoyer le graphe à l'enregistrement
+        model.Parent = null;
+        usage = await Budget.GetUsageAsync(model.Id);
+        others = (await Budget.GetCategoriesAsync()).Where(c => c.Id != model.Id).ToList();
     }
 
     private async Task Save()
     {
-        await Budget.SaveAsync(model!);
-        Nav.NavigateTo("budget");
+        error = null;
+        try
+        {
+            await Budget.SaveAsync(model!);
+            Nav.NavigateTo("budget");
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
     }
 
     private async Task Delete()
     {
-        await Budget.DeleteAsync(Id!.Value);
-        Nav.NavigateTo("budget");
+        error = null;
+        try
+        {
+            await Budget.DeleteAsync(Id!.Value, int.TryParse(reassignTo, out var target) ? target : null);
+            Nav.NavigateTo("budget");
+        }
+        catch (CategoryInUseException ex)
+        {
+            error = ex.Message;
+        }
     }
 }

@@ -1,0 +1,10 @@
+@* Options d'un <select> de catégories : catégories principales, puis leurs sous-catégories en retrait. *@
+@foreach (var c in Categories)
+{
+    <option value="@c.Id">@(c.IsSubcategory ? "    ↳ " + c.Name : c.Name)</option>
+}
+
+@code {
+    /// <summary>Catégories dans l'ordre de <c>BudgetService.GetCategoriesAsync</c>.</summary>
+    [Parameter, EditorRequired] public IEnumerable<BudgetCategory> Categories { get; set; } = [];
+}

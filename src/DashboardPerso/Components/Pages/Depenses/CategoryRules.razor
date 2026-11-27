@@ -22,7 +22,7 @@
     <span class="muted">vont dans</span>
     <select @bind="categoryId">
         <option value="">Choisir…</option>
-        @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+        <CategoryOptions Categories="categories" />
     </select>
     <button class="btn btn-primary" disabled="@(categoryId is null || string.IsNullOrWhiteSpace(pattern))" @onclick="Add">Ajouter</button>
 </div>
@@ -37,7 +37,7 @@
                 {
                     <tr>
                         <td><code>@r.Pattern</code></td>
-                        <td><span class="dot" style="background:@r.Category?.Color"></span>@r.Category?.Name</td>
+                        <td><span class="dot" style="background:@r.Category?.Color"></span>@r.Category?.FullName</td>
                         <td class="col-justify-end"><DeleteButton OnConfirm="() => Delete(r.Id)" /></td>
                     </tr>
                 }

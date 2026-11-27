@@ -23,20 +23,25 @@ namespace DashboardPerso.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("AnnualBudget")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("Color")
                         .IsRequired()
                         .HasMaxLength(7)
                         .HasColumnType("TEXT");
-
-                    b.Property<double>("MonthlyBudget")
-                        .HasColumnType("REAL");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
 
                     b.ToTable("BudgetCategories");
 
@@ -44,36 +49,36 @@ namespace DashboardPerso.Data.Migrations
                         new
                         {
                             Id = 1,
+                            AnnualBudget = 0.0,
                             Color = "#4f6bed",
-                            MonthlyBudget = 0.0,
                             Name = "Logement"
                         },
                         new
                         {
                             Id = 2,
+                            AnnualBudget = 0.0,
                             Color = "#2e9e6a",
-                            MonthlyBudget = 0.0,
                             Name = "Alimentation"
                         },
                         new
                         {
                             Id = 3,
+                            AnnualBudget = 0.0,
                             Color = "#e08a1e",
-                            MonthlyBudget = 0.0,
                             Name = "Transport"
                         },
                         new
                         {
                             Id = 4,
+                            AnnualBudget = 0.0,
                             Color = "#c2457a",
-                            MonthlyBudget = 0.0,
                             Name = "Loisirs"
                         },
                         new
                         {
                             Id = 5,
+                            AnnualBudget = 0.0,
                             Color = "#7a5bd1",
-                            MonthlyBudget = 0.0,
                             Name = "Santé"
                         });
                 });
@@ -175,6 +180,16 @@ namespace DashboardPerso.Data.Migrations
                     b.ToTable("Tasks");
                 });
 
+            modelBuilder.Entity("DashboardPerso.Models.BudgetCategory", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.BudgetCategory", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Parent");
+                });
+
             modelBuilder.Entity("DashboardPerso.Models.CategoryRule", b =>
                 {
                     b.HasOne("DashboardPerso.Models.BudgetCategory", "Category")
@@ -198,6 +213,8 @@ namespace DashboardPerso.Data.Migrations
 
             modelBuilder.Entity("DashboardPerso.Models.BudgetCategory", b =>
                 {
+                    b.Navigation("Children");
+
                     b.Navigation("Expenses");
                 });
 #pragma warning restore 612, 618

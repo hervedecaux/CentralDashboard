@@ -56,7 +56,7 @@ else
             <span class="muted">vont dans</span>
             <select @bind="ruleDraft.CategoryId">
                 <option value="">Choisir…</option>
-                @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+                <CategoryOptions Categories="categories" />
             </select>
             <button class="btn btn-primary" disabled="@(ruleDraft.CategoryId is null || string.IsNullOrWhiteSpace(ruleDraft.Pattern))" @onclick="SaveRule">Créer et appliquer</button>
             <button class="btn btn-ghost" @onclick="() => ruleDraft = null">Annuler</button>
@@ -109,7 +109,7 @@ else
                             {
                                 <select value="@row.CategoryId" @onchange="e => SetCategory(row, e.Value as string)">
                                     <option value="">Sans catégorie</option>
-                                    @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+                                    <CategoryOptions Categories="categories" />
                                 </select>
                                 @if (row.MatchedRule is not null)
                                 {

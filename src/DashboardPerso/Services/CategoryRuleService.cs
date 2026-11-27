@@ -10,7 +10,7 @@ public class CategoryRuleService(IDbContextFactory<AppDbContext> dbFactory)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         return await db.CategoryRules.AsNoTracking()
-            .Include(r => r.Category)
+            .Include(r => r.Category).ThenInclude(c => c!.Parent)
             .OrderBy(r => r.Category!.Name).ThenBy(r => r.Pattern)
             .ToListAsync();
     }

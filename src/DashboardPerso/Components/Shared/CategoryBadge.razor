@@ -1,0 +1,13 @@
+@if (Category is not null)
+{
+    <span class="badge" style="border-color:@(Category.Color)">@Category.FullName</span>
+}
+else if (ShowEmpty)
+{
+    <span class="muted">—</span>
+}
+
+@code {
+    [Parameter] public BudgetCategory? Category { get; set; }
+    [Parameter] public bool ShowEmpty { get; set; }
+}

@@ -31,7 +31,7 @@ dotnet run
 
 Le navigateur s'ouvre sur **http://localhost:5080**. Pour arrêter : `Ctrl + C` dans le Terminal.
 
-Au premier lancement, la base est créée automatiquement avec cinq catégories de budget (Logement, Alimentation, Transport, Loisirs, Santé) à 0 €. Il suffit d'aller dans **Budget** pour saisir les montants mensuels.
+Au premier lancement, la base est créée automatiquement avec cinq catégories de budget (Logement, Alimentation, Transport, Loisirs, Santé) à 0 €. Dans **Budget**, vous pouvez les renommer, les supprimer, ajouter des sous-catégories et saisir les montants **annuels**.
 
 Pour le développement, `dotnet watch` recharge l'application à chaque modification de fichier.
 
@@ -54,10 +54,19 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 | Page | Contenu |
 |---|---|
 | **Accueil** (`/`) | Dépensé ce mois-ci vs prévu, reste à dépenser, tâches ouvertes et en retard, budget par catégorie, prochaines tâches, dernières dépenses. |
-| **Budget** (`/budget`) | Catégories avec montant mensuel et couleur, suivi prévu / dépensé / reste par mois, barres de consommation. |
+| **Budget** (`/budget`) | Catégories et sous-catégories (ex. Automobile › Carburant, Assurance, Entretien), budget **annuel**, vue par mois (annuel ÷ 12) ou par année (avec le prévu à date). |
 | **Dépenses** (`/depenses`) | Liste par mois, filtre par catégorie, tri, pagination, total. Ajout, modification, suppression. |
 | **Import** (`/depenses/import`) | Import du relevé CSV du Crédit Agricole : aperçu, catégories proposées par des règles, doublons écartés. |
 | **Tâches** (`/taches`) | Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
+
+## Catégories et budget
+
+- **Budget annuel** : les montants saisis sont annuels. En vue « Mois », le prévu vaut budget annuel ÷ 12. En vue « Année », la colonne « Prévu à date » donne le budget au prorata des jours écoulés.
+- **Sous-catégories** (un seul niveau) : lien **+ sous-catégorie** sur une catégorie principale. Le budget et les dépenses d'une catégorie principale cumulent ceux de ses sous-catégories. Une part « non répartie » est possible (budget ou dépenses affectés directement à la catégorie principale).
+- **Dépenses et règles d'import** peuvent viser une catégorie principale ou une sous-catégorie. Filtrer les dépenses sur une catégorie principale inclut ses sous-catégories.
+- **Supprimer une catégorie** : ses dépenses et ses règles peuvent être rattachées à une autre catégorie. Sinon, les dépenses restent sans catégorie et les règles sont supprimées. Une catégorie qui a des sous-catégories ne peut pas être supprimée tant qu'elle en a.
+
+> Mise à jour depuis une version précédente : les anciens budgets mensuels sont automatiquement multipliés par 12 au premier lancement.
 
 ## Importer un relevé bancaire (Crédit Agricole)
 
