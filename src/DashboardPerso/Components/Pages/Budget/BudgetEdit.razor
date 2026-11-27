@@ -2,6 +2,7 @@
 @page "/budget/{Id:int}"
 @inject BudgetService Budget
 @inject NavigationManager Nav
+@inject ILogger<BudgetEdit> Logger
 
 <PageTitle>@Title · Dashboard perso</PageTitle>
 
@@ -18,6 +19,7 @@ else
     <div class="card form-card">
         <EditForm Model="model" OnValidSubmit="Save" FormName="budget-edit">
             <DataAnnotationsValidator />
+            <ValidationSummary class="negative" />
 
             <label>
                 Nom
@@ -116,6 +118,7 @@ else
                 {
                     <p class="muted">Aucune opération ni règle n'utilise cette catégorie.</p>
                 }
+                @if (deleteError is not null) { <p class="negative">@deleteError</p> }
                 <div class="form-actions">
                     <DeleteButton OnConfirm="Delete" />
                 </div>
@@ -146,6 +149,7 @@ else
     private string reassignTo = "";
     private bool notFound;
     private string? error;
+    private string? deleteError;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -198,11 +202,17 @@ else
         {
             error = ex.Message;
         }
+        catch (Exception ex)
+        {
+            // Erreur inattendue (base de données…) : on l'affiche au lieu de bloquer la page.
+            Logger.LogError(ex, "Enregistrement de la catégorie {Id}", model?.Id);
+            error = "L'enregistrement a échoué : " + (ex.InnerException?.Message ?? ex.Message);
+        }
     }
 
     private async Task Delete()
     {
-        error = null;
+        deleteError = null;
         try
         {
             await Budget.DeleteAsync(Id!.Value, int.TryParse(reassignTo, out var target) ? target : null);
@@ -210,7 +220,12 @@ else
         }
         catch (Exception ex) when (ex is CategoryInUseException or InvalidOperationException)
         {
-            error = ex.Message;
+            deleteError = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Suppression de la catégorie {Id}", Id);
+            deleteError = "La suppression a échoué : " + (ex.InnerException?.Message ?? ex.Message);
         }
     }
 }

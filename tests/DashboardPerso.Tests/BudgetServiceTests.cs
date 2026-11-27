@@ -122,4 +122,31 @@ public sealed class BudgetServiceTests : IDisposable
         Assert.Equal(0m, p.ElapsedFraction(new DateOnly(2025, 12, 31)));
         Assert.Equal(1m / 365m, p.ElapsedFraction(new DateOnly(2026, 1, 1)));
     }
+
+    [Fact]
+    public async Task Renommer_une_categorie_seule()
+    {
+        await service.RenameAsync(carburant, "  Carburant et péages ");
+        Assert.Equal("Carburant et péages", (await service.GetAsync(carburant))!.Name);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.RenameAsync(carburant, "   "));
+    }
+
+    [Fact]
+    public async Task Supprimer_reaffecte_aussi_les_beneficiaires_et_l_utilisation_est_comptee()
+    {
+        using (var db = factory.CreateDbContext())
+        {
+            db.Payees.Add(new Payee { Name = "TOTAL", Key = "TOTAL", DefaultCategoryId = carburant });
+            db.SaveChanges();
+        }
+        var usage = await service.GetAllUsageAsync();
+        Assert.Equal((2, 1, 1), usage[carburant]);                // plein + transfert, règle TOTAL, bénéficiaire
+        Assert.Equal((0, 0, 0), usage[1]);
+
+        await service.DeleteAsync(carburant, reassignTo: assurance);
+        using var check = factory.CreateDbContext();
+        Assert.Equal(assurance, check.Payees.Single().DefaultCategoryId);
+        Assert.Equal(assurance, check.CategoryRules.Single(r => r.Pattern == "TOTAL").CategoryId);
+        Assert.Equal(assurance, check.Expenses.Single(e => e.Label == "Plein").CategoryId);
+    }
 }

@@ -1,0 +1,180 @@
+@page "/categories"
+@inject BudgetService Budget
+
+<PageTitle>Catégories · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Catégories</h1>
+    <div class="actions">
+        <a class="btn btn-ghost" href="budget/nouveau?type=recette">+ Catégorie de recettes</a>
+        <a class="btn btn-primary" href="budget/nouveau">+ Catégorie de dépenses</a>
+    </div>
+</header>
+
+<p class="muted">
+    Renommez une catégorie directement dans la liste, ou supprimez-la : ses opérations, règles et bénéficiaires
+    peuvent être rattachés à une autre catégorie du même type. Le budget, la couleur et la catégorie parente
+    se modifient avec « Modifier ».
+</p>
+
+@if (message is not null) { <p class="positive">@message</p> }
+
+@if (categories is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    @foreach (var kind in new[] { CategoryKind.Expense, CategoryKind.Income })
+    {
+        var list = categories.Where(c => c.Kind == kind).ToList();
+        <h2>@(kind == CategoryKind.Income ? "Recettes" : "Dépenses")</h2>
+        <div class="card table-card">
+            <table class="table categories">
+                <thead>
+                    <tr>
+                        <th>Nom</th>
+                        <th class="col-justify-end">@(kind == CategoryKind.Income ? "Prévu / an" : "Budget / an")</th>
+                        <th class="col-justify-end">Opérations</th>
+                        <th class="col-justify-end">Règles</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in list)
+                    {
+                        var u = usage.GetValueOrDefault(c.Id);
+                        var children = categories.Count(x => x.ParentId == c.Id);
+                        <tr @key="c.Id">
+                            <td class="@(c.IsSubcategory ? "indent" : "")">
+                                @if (renaming == c.Id)
+                                {
+                                    <form class="inline-edit" @onsubmit="() => Rename(c)" @onsubmit:preventDefault>
+                                        <input @bind="newName" @bind:event="oninput" maxlength="80" autofocus />
+                                        <button type="submit" class="btn btn-primary small" disabled="@string.IsNullOrWhiteSpace(newName)">OK</button>
+                                        <button type="button" class="btn btn-ghost small" @onclick="() => renaming = null">Annuler</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <span class="dot" style="background:@c.Color"></span>@(c.IsSubcategory ? "↳ " : "")@c.Name
+                                }
+                            </td>
+                            <td class="col-justify-end">@c.AnnualBudget.ToString("C")</td>
+                            <td class="col-justify-end">@u.Operations</td>
+                            <td class="col-justify-end">@u.Rules</td>
+                            <td class="col-justify-end nowrap">
+                                <button class="link small" @onclick="() => StartRename(c)">Renommer</button>
+                                <span class="muted"> · </span><a href="budget/@c.Id" class="small">Modifier</a>
+                                <span class="muted"> · </span>
+                                @if (children > 0)
+                                {
+                                    <span class="muted small" title="Supprimez ou déplacez d'abord ses sous-catégories">@children sous-catégorie(s)</span>
+                                }
+                                else
+                                {
+                                    <button class="link small danger" @onclick="() => StartDelete(c)">Supprimer</button>
+                                }
+                            </td>
+                        </tr>
+                        @if (deleting == c.Id)
+                        {
+                            <tr class="delete-row">
+                                <td colspan="5">
+                                    <div class="delete-box">
+                                        <strong>Supprimer « @c.Name » ?</strong>
+                                        @if (u.Operations + u.Rules + u.Payees > 0)
+                                        {
+                                            <span class="muted">@u.Operations opération(s), @u.Rules règle(s), @u.Payees bénéficiaire(s) :</span>
+                                            <select @bind="reassignTo">
+                                                <option value="">laisser sans catégorie (règles supprimées)</option>
+                                                @foreach (var o in categories.Where(x => x.Id != c.Id && x.Kind == c.Kind))
+                                                {
+                                                    <option value="@o.Id">rattacher à @o.FullName</option>
+                                                }
+                                            </select>
+                                        }
+                                        <button class="btn btn-danger small" @onclick="() => Delete(c)">Supprimer</button>
+                                        <button class="btn btn-ghost small" @onclick="() => deleting = null">Annuler</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (list.Count == 0) { <p class="muted empty">Aucune catégorie.</p> }
+        </div>
+    }
+    @if (error is not null) { <p class="negative">@error</p> }
+}
+
+@code {
+    private List<BudgetCategory>? categories;
+    private Dictionary<int, (int Operations, int Rules, int Payees)> usage = [];
+    private int? renaming;
+    private int? deleting;
+    private string newName = "";
+    private string reassignTo = "";
+    private string? error;
+    private string? message;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        categories = await Budget.GetCategoriesAsync();
+        usage = await Budget.GetAllUsageAsync();
+    }
+
+    private void StartRename(BudgetCategory c)
+    {
+        renaming = c.Id;
+        deleting = null;
+        newName = c.Name;
+        error = message = null;
+    }
+
+    private void StartDelete(BudgetCategory c)
+    {
+        deleting = c.Id;
+        renaming = null;
+        reassignTo = "";
+        error = message = null;
+    }
+
+    private async Task Rename(BudgetCategory c)
+    {
+        await Run(async () =>
+        {
+            await Budget.RenameAsync(c.Id, newName);
+            message = $"« {c.Name} » renommée en « {newName.Trim()} ».";
+            renaming = null;
+        });
+    }
+
+    private async Task Delete(BudgetCategory c)
+    {
+        await Run(async () =>
+        {
+            await Budget.DeleteAsync(c.Id, int.TryParse(reassignTo, out var t) ? t : null);
+            message = $"« {c.Name} » supprimée.";
+            deleting = null;
+        });
+    }
+
+    /// <summary>Exécute l'action et affiche toute erreur au lieu de bloquer la page.</summary>
+    private async Task Run(Func<Task> action)
+    {
+        error = message = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            error = ex.InnerException?.Message ?? ex.Message;
+        }
+        await Load();
+    }
+}
