@@ -2,11 +2,13 @@
 @inject ExpenseService Expenses
 @inject BudgetService Budget
 @inject AccountService Accounts
+@inject OperationListState State
+@implements IDisposable
 
-<PageTitle>Dépenses · Dashboard perso</PageTitle>
+<PageTitle>Opérations · Dashboard perso</PageTitle>
 
 <header class="page-header">
-    <h1>Dépenses</h1>
+    <h1>Opérations</h1>
     <div class="actions">
         <div class="segmented">
             <button class="@(yearView ? "" : "active")" @onclick="() => SetView(false)">Mois</button>
@@ -25,7 +27,7 @@
             <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
         }
         <a class="btn btn-ghost" href="depenses/import">Importer un relevé</a>
-        <a class="btn btn-primary" href="@(accountFilter is { } acc ? $"depenses/nouvelle?compte={acc}" : "depenses/nouvelle")">+ Nouvelle dépense</a>
+        <a class="btn btn-primary" href="@(accountFilter is { } acc ? $"depenses/nouvelle?compte={acc}" : "depenses/nouvelle")">+ Nouvelle opération</a>
     </div>
 </header>
 
@@ -122,18 +124,20 @@ else
 }
 
 @code {
-    private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private List<Expense>? items;
     [SupplyParameterFromQuery(Name = "vue")] public string? ViewQuery { get; set; }
-    /// <summary>Vue « Année » : toutes les opérations de l'année du mois sélectionné.</summary>
-    private bool yearView;
+    [SupplyParameterFromQuery(Name = "compte")] public int? AccountQuery { get; set; }
     private List<BudgetCategory> categories = [];
     private List<Account> accounts = [];
-    [SupplyParameterFromQuery(Name = "compte")] public int? AccountQuery { get; set; }
-    private string categoryFilter = "";
-    private int? accountFilter;
-    private bool showTransfers = true;
-    private bool showIncome = true;
+
+    // L'état de la liste est conservé (OperationListState) pour la retrouver telle quelle au retour d'une fiche.
+    private DateOnly month { get => State.Month; set => State.Month = value; }
+    /// <summary>Vue « Année » : toutes les opérations de l'année du mois sélectionné.</summary>
+    private bool yearView { get => State.YearView; set => State.YearView = value; }
+    private string categoryFilter { get => State.CategoryFilter; set => State.CategoryFilter = value; }
+    private int? accountFilter { get => State.AccountId; set => State.AccountId = value; }
+    private bool showTransfers { get => State.ShowTransfers; set => State.ShowTransfers = value; }
+    private bool showIncome { get => State.ShowIncome; set => State.ShowIncome = value; }
     private readonly PaginationState pagination = new() { ItemsPerPage = 20 };
 
     private readonly GridSort<Expense> byLabel = GridSort<Expense>.ByAscending(e => e.Label);
@@ -173,10 +177,14 @@ else
     {
         categories = await Budget.GetCategoriesAsync();
         accounts = await Accounts.GetAllAsync();
-        accountFilter = accounts.Any(a => a.Id == AccountQuery) ? AccountQuery : null;
-        yearView = ViewQuery == "annee";
+        if (AccountQuery is not null) accountFilter = accounts.Any(a => a.Id == AccountQuery) ? AccountQuery : null;
+        else if (accountFilter is { } acc && accounts.All(a => a.Id != acc)) accountFilter = null;
+        if (ViewQuery is not null) yearView = ViewQuery == "annee";
         await Load();
+        await pagination.SetCurrentPageIndexAsync(State.PageIndex);
     }
+
+    public void Dispose() => State.PageIndex = pagination.CurrentPageIndex;
 
     private async Task SetAccount(int? id)
     {

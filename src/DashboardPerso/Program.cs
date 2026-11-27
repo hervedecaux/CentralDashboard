@@ -31,6 +31,7 @@ builder.Services.AddScoped<CategoryRuleService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<PayeeService>();
+builder.Services.AddScoped<OperationListState>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
