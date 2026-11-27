@@ -150,3 +150,21 @@ table.table .col-check { width: 48px; }
 .content .table-card table.quickgrid.table > thead > tr > th .col-title-text {
     font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; font-weight: inherit;
 }
+
+/* Import de relevé */
+.notice.success { border-color: var(--ok); }
+.positive { color: var(--ok); }
+.badge.warn { border-color: var(--warn); color: var(--warn); }
+button.link { background: none; border: none; padding: 0; color: var(--primary); cursor: pointer; font: inherit; }
+button.link:hover { text-decoration: underline; }
+.rule-draft { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.rule-draft input { min-width: 220px; }
+.content .table-card table.table { width: 100%; border-collapse: collapse; }
+.content .table-card table.table:not(.quickgrid) th,
+.content .table-card table.table:not(.quickgrid) td { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.content .table-card table.table:not(.quickgrid) th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 600; }
+.content .table-card table.table:not(.quickgrid) .col-justify-end { text-align: right; }
+.import-table .label-input { width: 100%; min-width: 220px; padding: 0.3rem 0.5rem; }
+.import-table select { padding: 0.3rem 0.5rem; }
+.import-table tr.excluded td { opacity: .55; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }

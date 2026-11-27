@@ -41,6 +41,7 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
         // Les dépenses liées sont conservées, sans catégorie.
         await db.Expenses.Where(e => e.CategoryId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.CategoryId, (int?)null));
+        await db.CategoryRules.Where(r => r.CategoryId == id).ExecuteDeleteAsync();
         await db.BudgetCategories.Where(c => c.Id == id).ExecuteDeleteAsync();
     }
 

@@ -1,0 +1,74 @@
+@page "/depenses/regles"
+@inject CategoryRuleService Rules
+@inject BudgetService Budget
+
+<PageTitle>Règles de catégorie · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Règles de catégorie</h1>
+    <div class="actions">
+        <a class="btn btn-ghost" href="depenses/import">Importer un relevé</a>
+    </div>
+</header>
+
+<p class="muted">
+    À l'import d'un relevé, une opération dont le libellé contient le texte d'une règle reçoit sa catégorie.
+    Les majuscules et les accents ne comptent pas. Si plusieurs règles correspondent, la plus longue l'emporte.
+</p>
+
+<div class="card rule-draft">
+    <span class="muted">Les libellés contenant</span>
+    <input @bind="pattern" @bind:event="oninput" placeholder="ex. ORANGE SA" />
+    <span class="muted">vont dans</span>
+    <select @bind="categoryId">
+        <option value="">Choisir…</option>
+        @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+    </select>
+    <button class="btn btn-primary" disabled="@(categoryId is null || string.IsNullOrWhiteSpace(pattern))" @onclick="Add">Ajouter</button>
+</div>
+
+@if (rules is not null)
+{
+    <div class="card table-card">
+        <table class="table">
+            <thead><tr><th>Texte recherché</th><th>Catégorie</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var r in rules)
+                {
+                    <tr>
+                        <td><code>@r.Pattern</code></td>
+                        <td><span class="dot" style="background:@r.Category?.Color"></span>@r.Category?.Name</td>
+                        <td class="col-justify-end"><DeleteButton OnConfirm="() => Delete(r.Id)" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (rules.Count == 0) { <p class="muted empty">Aucune règle pour l'instant.</p> }
+    </div>
+}
+
+@code {
+    private List<CategoryRule>? rules;
+    private List<BudgetCategory> categories = [];
+    private string pattern = "";
+    private int? categoryId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        categories = await Budget.GetCategoriesAsync();
+        rules = await Rules.GetAllAsync();
+    }
+
+    private async Task Add()
+    {
+        await Rules.AddAsync(pattern, categoryId!.Value);
+        pattern = "";
+        rules = await Rules.GetAllAsync();
+    }
+
+    private async Task Delete(int id)
+    {
+        await Rules.DeleteAsync(id);
+        rules = await Rules.GetAllAsync();
+    }
+}

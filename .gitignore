@@ -7,3 +7,6 @@ obj/
 .vs/
 .idea/
 *.user
+# Relevés bancaires réels : ne jamais les versionner (seul le fichier fictif des tests l'est)
+*.csv
+!tests/**/Fixtures/*.csv

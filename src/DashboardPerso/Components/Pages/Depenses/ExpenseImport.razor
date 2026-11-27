@@ -1,0 +1,238 @@
+@page "/depenses/import"
+@inject ImportService Import
+@inject BudgetService Budget
+@inject CategoryRuleService Rules
+
+<PageTitle>Importer un relevé · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Importer un relevé bancaire</h1>
+    <div class="actions">
+        <a class="btn btn-ghost" href="depenses/regles">Règles de catégorie</a>
+        <a class="btn btn-ghost" href="depenses">Retour aux dépenses</a>
+    </div>
+</header>
+
+@if (result is not null)
+{
+    <div class="card notice success">
+        <strong>@result dépense(s) importée(s).</strong>
+        <a href="depenses">Voir les dépenses</a> · <button class="link" @onclick="Reset">Importer un autre fichier</button>
+    </div>
+}
+else if (rows is null)
+{
+    <div class="card form-card">
+        <p>
+            Sélectionnez le fichier CSV « Liste des opérations » téléchargé depuis votre espace Crédit Agricole.
+            Rien n'est enregistré avant votre validation : vous verrez d'abord un aperçu.
+        </p>
+        <label>
+            Fichier CSV
+            <InputFile OnChange="OnFileSelected" accept=".csv,text/csv" />
+        </label>
+        @if (loading) { <p class="muted">Lecture du fichier…</p> }
+        @if (error is not null) { <p class="negative">@error</p> }
+        <p class="muted small">
+            Seuls les débits du compte sont proposés comme dépenses. Une opération déjà importée est reconnue
+            et ignorée : vous pouvez réimporter un fichier qui chevauche le précédent sans créer de doublon.
+        </p>
+    </div>
+}
+else
+{
+    <section class="cards">
+        <div class="card stat"><span class="stat-label">Fichier</span><span>@fileName</span><span class="muted">@rows.Count opérations, du @rows.Min(r => r.Operation.Date).ToString("dd/MM/yyyy") au @rows.Max(r => r.Operation.Date).ToString("dd/MM/yyyy")</span></div>
+        <div class="card stat"><span class="stat-label">Nouvelles dépenses</span><span class="stat-value">@Count(ImportStatus.New)</span></div>
+        <div class="card stat"><span class="stat-label">Ignorées</span><span>@Count(ImportStatus.AlreadyImported) déjà importée(s)</span><span>@Count(ImportStatus.PossibleDuplicate) doublon(s) possible(s)</span><span>@Count(ImportStatus.Credit) crédit(s)</span></div>
+    </section>
+
+    @if (ruleDraft is not null)
+    {
+        <div class="card rule-draft">
+            <strong>Nouvelle règle</strong>
+            <span class="muted">Les libellés contenant</span>
+            <input @bind="ruleDraft.Pattern" @bind:event="oninput" />
+            <span class="muted">vont dans</span>
+            <select @bind="ruleDraft.CategoryId">
+                <option value="">Choisir…</option>
+                @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+            </select>
+            <button class="btn btn-primary" disabled="@(ruleDraft.CategoryId is null || string.IsNullOrWhiteSpace(ruleDraft.Pattern))" @onclick="SaveRule">Créer et appliquer</button>
+            <button class="btn btn-ghost" @onclick="() => ruleDraft = null">Annuler</button>
+        </div>
+    }
+
+    <div class="toolbar">
+        <label class="inline"><input type="checkbox" @bind="showIgnored" /> Afficher les lignes ignorées</label>
+        <span class="muted">@Selected.Count() sélectionnée(s) · <strong>@Selected.Sum(r => r.Operation.Debit ?? 0).ToString("C")</strong></span>
+    </div>
+
+    <div class="card table-card">
+        <table class="table import-table">
+            <thead>
+                <tr>
+                    <th class="col-check"></th>
+                    <th>Date</th>
+                    <th>Libellé</th>
+                    <th class="col-justify-end">Montant</th>
+                    <th>Catégorie</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Visible)
+                {
+                    <tr class="@(row.Include ? "" : "excluded")">
+                        <td>
+                            <input type="checkbox" @bind="row.Include" disabled="@(row.Status is ImportStatus.Credit or ImportStatus.AlreadyImported)" />
+                        </td>
+                        <td>@row.Operation.Date.ToString("dd/MM")</td>
+                        <td>
+                            <input class="label-input" @bind="row.Label" title="@row.Operation.RawLabel" />
+                            <div class="muted small">
+                                @row.Operation.Type
+                                @switch (row.Status)
+                                {
+                                    case ImportStatus.AlreadyImported: <span class="badge">Déjà importée</span>; break;
+                                    case ImportStatus.PossibleDuplicate: <span class="badge warn" title="Une dépense saisie à la main a la même date et le même montant">Doublon possible</span>; break;
+                                    case ImportStatus.Credit: <span class="badge">Crédit</span>; break;
+                                }
+                            </div>
+                        </td>
+                        <td class="col-justify-end amount">
+                            @if (row.Operation.IsDebit) { @row.Operation.Debit!.Value.ToString("C") }
+                            else { <span class="positive">+@(row.Operation.Credit?.ToString("C"))</span> }
+                        </td>
+                        <td>
+                            @if (row.Operation.IsDebit)
+                            {
+                                <select value="@row.CategoryId" @onchange="e => SetCategory(row, e.Value as string)">
+                                    <option value="">Sans catégorie</option>
+                                    @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+                                </select>
+                                @if (row.MatchedRule is not null)
+                                {
+                                    <div class="muted small">règle « @row.MatchedRule »</div>
+                                }
+                            }
+                        </td>
+                        <td>
+                            @if (row.Operation.IsDebit)
+                            {
+                                <button class="link small" @onclick="() => StartRule(row)" title="Catégoriser automatiquement les opérations similaires">+ règle</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="form-actions">
+        <button class="btn btn-primary" disabled="@(!Selected.Any() || saving)" @onclick="Save">
+            Importer @Selected.Count() dépense(s)
+        </button>
+        <button class="btn btn-ghost" @onclick="Reset">Annuler</button>
+    </div>
+}
+
+@code {
+    private List<ImportRow>? rows;
+    private List<BudgetCategory> categories = [];
+    private string? fileName, error;
+    private bool loading, saving, showIgnored;
+    private int? result;
+    private RuleDraft? ruleDraft;
+
+    private class RuleDraft
+    {
+        public string Pattern { get; set; } = "";
+        public int? CategoryId { get; set; }
+    }
+
+    private IEnumerable<ImportRow> Visible => showIgnored
+        ? rows!
+        : rows!.Where(r => r.Status is ImportStatus.New or ImportStatus.PossibleDuplicate);
+
+    private IEnumerable<ImportRow> Selected => rows?.Where(r => r.Include && r.Operation.IsDebit) ?? [];
+
+    private int Count(ImportStatus s) => rows!.Count(r => r.Status == s);
+
+    protected override async Task OnInitializedAsync() => categories = await Budget.GetCategoriesAsync();
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        error = null;
+        loading = true;
+        try
+        {
+            var file = e.File;
+            if (file.Size > ImportService.MaxFileSize)
+                throw new InvalidOperationException("Fichier trop volumineux (5 Mo maximum).");
+            await using var stream = file.OpenReadStream(ImportService.MaxFileSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            fileName = file.Name;
+            rows = await Import.PreviewAsync(ms.ToArray());
+            if (rows.Count == 0)
+            {
+                rows = null;
+                error = "Aucune opération trouvée dans ce fichier.";
+            }
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidOperationException or IOException)
+        {
+            rows = null;
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void SetCategory(ImportRow row, string? value)
+    {
+        row.CategoryId = int.TryParse(value, out var id) ? id : null;
+        row.CategoryChosenByUser = true;
+        row.MatchedRule = null;
+    }
+
+    private void StartRule(ImportRow row) => ruleDraft = new RuleDraft
+    {
+        // Proposition : début du bénéficiaire, à raccourcir au besoin (ex. « ORANGE SA »).
+        Pattern = SuggestPattern(row.Operation.Description),
+        CategoryId = row.CategoryId,
+    };
+
+    /// <summary>« ORANGE SA-ORANGE - Orange - Votre abonnement… » → « ORANGE SA-ORANGE ».</summary>
+    private static string SuggestPattern(string description)
+    {
+        var head = description.Split(" - ", 2)[0];
+        return string.Join(' ', head.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(3));
+    }
+
+    private async Task SaveRule()
+    {
+        await Rules.AddAsync(ruleDraft!.Pattern, ruleDraft.CategoryId!.Value);
+        ruleDraft = null;
+        await Import.ApplyRulesAsync(rows!);
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        result = await Import.ImportAsync(rows!);
+        saving = false;
+        rows = null;
+    }
+
+    private void Reset()
+    {
+        rows = null;
+        result = null;
+        error = null;
+        ruleDraft = null;
+    }
+}
