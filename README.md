@@ -35,6 +35,33 @@ Au premier lancement, la base est créée automatiquement avec cinq catégories 
 
 Pour le développement, `dotnet watch` recharge l'application à chaque modification de fichier.
 
+### 3. Installer l'application pour qu'elle tourne en permanence (recommandé)
+
+Plutôt que de lancer `dotnet run` à chaque fois, installez une version autonome qui démarre toute seule à l'ouverture de session et tourne en arrière-plan :
+
+```bash
+cd chemin/vers/CentralDashboard
+scripts/macos/installer.sh
+```
+
+Le script :
+
+1. publie l'application en version Release autonome pour votre processeur (Apple Silicon `osx-arm64`, ou Intel `osx-x64`, détecté automatiquement) dans `~/Applications/DashboardPerso` ;
+2. ajoute un lancement automatique à l'ouverture de session (`~/Library/LaunchAgents/local.dashboardperso.plist`), relancé en cas d'arrêt inattendu ;
+3. démarre l'application et ouvre **http://localhost:5080**.
+
+Ensuite, il suffit d'ouvrir http://localhost:5080 (pensez à le mettre en favori).
+
+| Action | Commande |
+|---|---|
+| Mettre à jour (git pull, republication, redémarrage) | `scripts/macos/mettre-a-jour.sh` |
+| Réinstaller / redémarrer avec le code actuel | `scripts/macos/installer.sh` |
+| Désinstaller (les données sont conservées) | `scripts/macos/desinstaller.sh` |
+| Arrêter jusqu'à la prochaine session | `launchctl bootout gui/$(id -u)/local.dashboardperso` |
+| Journaux | `~/Library/Logs/DashboardPerso/` |
+
+Vos données restent dans `~/Library/Application Support/DashboardPerso/` : installer, mettre à jour ou désinstaller n'y touche pas, et les migrations s'appliquent au redémarrage. Pendant que la version installée tourne, le port 5080 est occupé : arrêtez-la avant de lancer `dotnet run` pour développer.
+
 ## Où sont mes données ?
 
 Dans un seul fichier SQLite :
