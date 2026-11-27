@@ -20,8 +20,18 @@ public record BankOperation
     /// <summary>Montant crédité (positif), ou null pour un débit.</summary>
     public decimal? Credit { get; init; }
 
-    /// <summary>Provenance : « Compte » ou une carte, ex. « Carte ••5524 · Herve Decaux ».</summary>
+    /// <summary>Provenance, identifiant stable : « Compte » ou une carte, ex. « Carte ••5524 ».</summary>
     public string Source { get; init; } = AccountSource;
+
+    /// <summary>Porteur de la carte (ex. « Mme Claire Dupont »), pour proposer un libellé.</summary>
+    public string? CardHolder { get; init; }
+
+    /// <summary>Libellé proposé pour le compte ou la carte à sa première apparition.</summary>
+    public string DefaultSourceLabel => !IsCardOperation ? "Compte courant"
+        : CardHolder is null ? Source : $"{Source} · {CardHolder}";
+
+    /// <summary>Bénéficiaire déduit du libellé (voir <see cref="PayeeExtractor"/>).</summary>
+    public string Payee => PayeeExtractor.Extract(Description);
 
     public bool IsCardOperation => Source != AccountSource;
 

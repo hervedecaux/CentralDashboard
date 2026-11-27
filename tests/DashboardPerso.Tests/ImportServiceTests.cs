@@ -69,8 +69,53 @@ public sealed class ImportServiceTests : IDisposable
         await service.ImportAsync(rows);
         using var db = factory.CreateDbContext();
         Assert.True(db.Expenses.Single(e => e.Amount == 107.50m).IsTransfer);
-        Assert.Equal(2, db.Expenses.Count(e => e.Source == "Carte ••5524 · Mme Claire Dupont"));
-        Assert.Equal(6, db.Expenses.Count(e => e.Source == "Compte"));
+        var carte = db.Accounts.Single(a => a.ImportId == "Carte ••5524");
+        Assert.Equal("Carte ••5524 · Mme Claire Dupont", carte.Label);
+        Assert.Equal(AccountKind.DeferredDebitCard, carte.Kind);
+        Assert.Equal(2, db.Expenses.Count(e => e.AccountId == carte.Id));
+        Assert.Equal(6, db.Expenses.Count(e => e.AccountId == Account.MainAccountId));
+    }
+
+    [Fact]
+    public async Task Un_libelle_de_carte_modifie_est_conserve_aux_imports_suivants()
+    {
+        await service.ImportAsync(await service.PreviewAsync(CsvTestData.Sample()));
+        using (var db = factory.CreateDbContext())
+        {
+            db.Accounts.Single(a => a.ImportId == "Carte ••5524").Label = "Visa Claire";
+            db.Expenses.RemoveRange(db.Expenses.Where(e => e.AccountId != Account.MainAccountId));
+            db.SaveChanges();
+        }
+        await service.ImportAsync(await service.PreviewAsync(CsvTestData.Sample()));
+        using var check = factory.CreateDbContext();
+        Assert.Equal(2, check.Accounts.Count());
+        Assert.Equal("Visa Claire", check.Accounts.Single(a => a.ImportId == "Carte ••5524").Label);
+    }
+
+    [Fact]
+    public async Task Les_beneficiaires_sont_crees_et_leur_categorie_par_defaut_prime_sur_les_regles()
+    {
+        await service.ImportAsync(await service.PreviewAsync(CsvTestData.Sample()));
+        int payeeId;
+        using (var db = factory.CreateDbContext())
+        {
+            Assert.Contains(db.Payees, p => p.Name == "SUPERMARCHE EXEMPLE");
+            Assert.DoesNotContain(db.Payees, p => p.Name.StartsWith("CARTE X5524")); // relevé carte : pas un bénéficiaire
+            var payee = db.Payees.Single(p => p.Name == "ÉLECTRICITÉ EXEMPLE");
+            payee.DefaultCategoryId = 1;
+            payeeId = payee.Id;
+            db.CategoryRules.Add(new CategoryRule { Pattern = "ELECTRICITE", CategoryId = 2 });
+            db.Expenses.RemoveRange(db.Expenses);
+            db.SaveChanges();
+        }
+        var rows = await service.PreviewAsync(CsvTestData.Sample());
+        var edf = rows.Single(r => r.Payee == "ÉLECTRICITÉ EXEMPLE");
+        Assert.Equal(1, edf.CategoryId);
+        Assert.True(edf.FromPayeeDefault);
+
+        await service.ImportAsync(rows);
+        using var check = factory.CreateDbContext();
+        Assert.Equal(payeeId, check.Expenses.Single(e => e.Amount == 126.40m).PayeeId);
     }
 
     [Fact]

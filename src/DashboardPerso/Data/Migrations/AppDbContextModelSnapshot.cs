@@ -17,6 +17,41 @@ namespace DashboardPerso.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
+            modelBuilder.Entity("DashboardPerso.Models.Account", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ImportId")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImportId")
+                        .IsUnique();
+
+                    b.ToTable("Accounts");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            ImportId = "Compte",
+                            Kind = 0,
+                            Label = "Compte courant"
+                        });
+                });
+
             modelBuilder.Entity("DashboardPerso.Models.BudgetCategory", b =>
                 {
                     b.Property<int>("Id")
@@ -113,6 +148,11 @@ namespace DashboardPerso.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("AccountId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
                     b.Property<double>("Amount")
                         .HasColumnType("REAL");
 
@@ -138,14 +178,12 @@ namespace DashboardPerso.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(80)
-                        .HasColumnType("TEXT")
-                        .HasDefaultValue("Compte");
+                    b.Property<int?>("PayeeId")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
 
                     b.HasIndex("CategoryId");
 
@@ -153,7 +191,41 @@ namespace DashboardPerso.Data.Migrations
 
                     b.HasIndex("ImportKey");
 
+                    b.HasIndex("PayeeId");
+
                     b.ToTable("Expenses");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.Payee", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DefaultCategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("DefaultIsTransfer")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DefaultCategoryId");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("Payees");
                 });
 
             modelBuilder.Entity("DashboardPerso.Models.TaskItem", b =>
@@ -215,18 +287,48 @@ namespace DashboardPerso.Data.Migrations
 
             modelBuilder.Entity("DashboardPerso.Models.Expense", b =>
                 {
+                    b.HasOne("DashboardPerso.Models.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("DashboardPerso.Models.BudgetCategory", "Category")
                         .WithMany("Expenses")
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DashboardPerso.Models.Payee", "Payee")
+                        .WithMany("Expenses")
+                        .HasForeignKey("PayeeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Account");
+
                     b.Navigation("Category");
+
+                    b.Navigation("Payee");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.Payee", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.BudgetCategory", "DefaultCategory")
+                        .WithMany()
+                        .HasForeignKey("DefaultCategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("DefaultCategory");
                 });
 
             modelBuilder.Entity("DashboardPerso.Models.BudgetCategory", b =>
                 {
                     b.Navigation("Children");
 
+                    b.Navigation("Expenses");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.Payee", b =>
+                {
                     b.Navigation("Expenses");
                 });
 #pragma warning restore 612, 618

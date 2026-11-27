@@ -9,6 +9,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
     public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<Payee> Payees => Set<Payee>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
@@ -32,7 +34,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<Expense>().HasIndex(e => e.Date);
         modelBuilder.Entity<Expense>().HasIndex(e => e.ImportKey);
-        modelBuilder.Entity<Expense>().Property(e => e.Source).HasDefaultValue(Expense.SourceAccount);
+        modelBuilder.Entity<Expense>()
+            .HasOne(e => e.Account).WithMany()
+            .HasForeignKey(e => e.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Expense>().Property(e => e.AccountId).HasDefaultValue(Account.MainAccountId);
+        modelBuilder.Entity<Expense>()
+            .HasOne(e => e.Payee).WithMany(p => p.Expenses)
+            .HasForeignKey(e => e.PayeeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Account>().HasIndex(a => a.ImportId).IsUnique();
+        modelBuilder.Entity<Account>().HasData(new Account
+        {
+            Id = Account.MainAccountId, Label = "Compte courant", Kind = AccountKind.CheckingAccount, ImportId = "Compte"
+        });
+
+        modelBuilder.Entity<Payee>().HasIndex(p => p.Key).IsUnique();
+        modelBuilder.Entity<Payee>()
+            .HasOne(p => p.DefaultCategory).WithMany()
+            .HasForeignKey(p => p.DefaultCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<CategoryRule>()
             .HasOne(r => r.Category)

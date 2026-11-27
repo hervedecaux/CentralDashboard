@@ -28,9 +28,13 @@ public class Expense
     [StringLength(64)]
     public string? ImportKey { get; set; }
 
-    /// <summary>Provenance : « Compte » ou une carte (« Carte ••5524 · Herve Decaux »).</summary>
-    [StringLength(80)]
-    public string Source { get; set; } = SourceAccount;
+    /// <summary>Compte ou carte d'origine.</summary>
+    public int AccountId { get; set; } = Account.MainAccountId;
+    public Account? Account { get; set; }
+
+    /// <summary>Bénéficiaire (null si inconnu).</summary>
+    public int? PayeeId { get; set; }
+    public Payee? Payee { get; set; }
 
     /// <summary>
     /// Transfert (débit du relevé d'une carte différée, virement vers un compte de crédit…) :
@@ -38,5 +42,4 @@ public class Expense
     /// </summary>
     public bool IsTransfer { get; set; }
 
-    public const string SourceAccount = "Compte";
 }

@@ -68,6 +68,12 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 
 > Mise à jour depuis une version précédente : les anciens budgets mensuels sont automatiquement multipliés par 12 au premier lancement.
 
+## Comptes, cartes et bénéficiaires
+
+- **Comptes et cartes** (`/comptes`) : chaque compte ou carte présent dans un relevé est créé à l'import. Son libellé est modifiable et il est conservé aux imports suivants. Pour une **carte sans relevé téléchargeable** (ex. carte de crédit), ajoutez-la ici puis saisissez ses dépenses à la main : le bouton « + Nouvelle dépense » de son onglet la présélectionne.
+- **Bénéficiaires** (`/beneficiaires`) : ils sont déduits du libellé bancaire à l'import (« ORANGE SA-ORANGE - Orange - Votre abonnement… » → « ORANGE SA-ORANGE »), ou saisis sur une dépense. On peut les renommer : le lien avec le libellé bancaire est conservé.
+- **Catégorie par défaut** d'un bénéficiaire (ou « Transfert ») : elle s'applique aux nouvelles dépenses, à l'import comme à la saisie, avant les règles d'import. « Appliquer » catégorise aussi ses dépenses existantes sans catégorie.
+
 ## Importer un relevé bancaire (Crédit Agricole)
 
 1. Sur le site du Crédit Agricole, téléchargez la liste des opérations du compte au format **CSV**.
@@ -81,7 +87,7 @@ Ce qui est importé :
 - **Le débit mensuel de la carte** sur le compte est reconnu (libellé mentionnant la carte et montant égal au total de la section carte). Il est importé comme **transfert** : visible, sans catégorie, hors budget. Ainsi les paiements ne sont pas comptés deux fois.
 - **Transferts** : une règle peut aussi marquer un libellé comme transfert, par exemple un virement vers un compte de crédit. On peut également cocher « Transfert » sur une dépense.
 - **Doublons** : chaque opération importée garde une empreinte (date, montant, libellé complet). Réimporter un fichier qui chevauche le précédent n'ajoute que les nouvelles opérations. Si une dépense saisie à la main a la même date et le même montant, la ligne est marquée « doublon possible » et décochée.
-- **Catégories** : la page **Règles de catégorie** associe un texte (ex. `ORANGE SA`) à une catégorie. Les majuscules et les accents ne comptent pas, et la règle la plus longue l'emporte. Le lien **+ règle** de l'aperçu crée une règle à partir d'une ligne et l'applique aussitôt aux autres.
+- **Catégories** : la catégorie par défaut du bénéficiaire est appliquée en premier. Sinon, la page **Règles de catégorie** associe un texte (ex. `ORANGE SA`) à une catégorie. Les majuscules et les accents ne comptent pas, et la règle la plus longue l'emporte. Le lien **+ règle** de l'aperçu crée une règle à partir d'une ligne et l'applique aussitôt aux autres.
 
 Le libellé bancaire complet est conservé dans les notes de chaque dépense importée.
 
