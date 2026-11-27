@@ -1,0 +1,21 @@
+@* Sélecteur de mois : ‹ novembre 2026 › *@
+<div class="month-selector">
+    <button type="button" class="btn btn-ghost" @onclick="() => Change(-1)" title="Mois précédent">‹</button>
+    <span class="month-label">@Value.ToString("MMMM yyyy")</span>
+    <button type="button" class="btn btn-ghost" @onclick="() => Change(1)" title="Mois suivant">›</button>
+    @if (Value.Year != DateTime.Today.Year || Value.Month != DateTime.Today.Month)
+    {
+        <button type="button" class="btn btn-ghost" @onclick="Today">Ce mois-ci</button>
+    }
+</div>
+
+@code {
+    /// <summary>Premier jour du mois sélectionné.</summary>
+    [Parameter] public DateOnly Value { get; set; }
+    [Parameter] public EventCallback<DateOnly> ValueChanged { get; set; }
+
+    private Task Change(int delta) => ValueChanged.InvokeAsync(Value.AddMonths(delta));
+
+    private Task Today() =>
+        ValueChanged.InvokeAsync(new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1));
+}

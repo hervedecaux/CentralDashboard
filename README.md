@@ -1,0 +1,99 @@
+# Dashboard perso
+
+Application personnelle qui centralise **budget**, **dépenses** et **tâches**. Elle tourne entièrement en local sur le Mac : un petit serveur web .NET et une base SQLite, sans cloud ni compte.
+
+- **Stack** : .NET 10 (LTS), ASP.NET Core + Blazor (rendu interactif côté serveur), Entity Framework Core + SQLite.
+- **Grilles** : `QuickGrid` (gratuit, fourni par Microsoft). Le code est organisé pour pouvoir passer à Telerik UI for Blazor plus tard (voir plus bas).
+
+![Aperçu de l'accueil](docs/apercu-accueil.png)
+
+## Lancer l'application sur macOS
+
+### 1. Installer le SDK .NET 10 (une seule fois)
+
+Au choix :
+
+- Installateur officiel : https://dotnet.microsoft.com/download/dotnet/10.0 (prendre **macOS Arm64** pour un Mac Apple Silicon M1/M2/M3/M4, **x64** pour un Mac Intel) ;
+- ou avec Homebrew : `brew install --cask dotnet-sdk`
+
+Vérifier dans le Terminal :
+
+```bash
+dotnet --version   # doit afficher 10.0.x
+```
+
+### 2. Démarrer
+
+```bash
+cd chemin/vers/dashboard-perso/src/DashboardPerso
+dotnet run
+```
+
+Le navigateur s'ouvre sur **http://localhost:5080**. Pour arrêter : `Ctrl + C` dans le Terminal.
+
+Au premier lancement, la base est créée automatiquement avec cinq catégories de budget (Logement, Alimentation, Transport, Loisirs, Santé) à 0 €. Il suffit d'aller dans **Budget** pour saisir les montants mensuels.
+
+Pour le développement, `dotnet watch` recharge l'application à chaque modification de fichier.
+
+## Où sont mes données ?
+
+Dans un seul fichier SQLite :
+
+```
+~/Library/Application Support/DashboardPerso/dashboard.db
+```
+
+Le chemin exact est affiché dans le Terminal au démarrage (`Base de données : …`). Il est en dehors du dossier du code : supprimer ou recloner le projet ne touche pas aux données.
+
+- **Sauvegarde** : copier ce fichier (application arrêtée), ou laisser Time Machine s'en charger.
+- **Changer d'emplacement** (ex. un dossier iCloud Drive) : renseigner `Database:Path` dans `src/DashboardPerso/appsettings.json`.
+- **Consulter la base** : n'importe quel outil SQLite (DB Browser for SQLite, `sqlite3`, l'extension SQLite de VS Code…).
+
+## Ce que fait le squelette
+
+| Page | Contenu |
+|---|---|
+| **Accueil** (`/`) | Dépensé ce mois-ci vs prévu, reste à dépenser, tâches ouvertes et en retard, budget par catégorie, prochaines tâches, dernières dépenses. |
+| **Budget** (`/budget`) | Catégories avec montant mensuel et couleur, suivi prévu / dépensé / reste par mois, barres de consommation. |
+| **Dépenses** (`/depenses`) | Liste par mois, filtre par catégorie, tri, pagination, total. Ajout, modification, suppression. |
+| **Tâches** (`/taches`) | Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
+
+## Organisation du code
+
+```
+dashboard-perso/
+├── DashboardPerso.slnx            Solution (ouvrable dans Rider, VS Code, Visual Studio)
+├── dotnet-tools.json              Outil dotnet-ef pour les migrations
+└── src/DashboardPerso/
+    ├── Program.cs                 Démarrage : culture fr-FR, SQLite, migrations auto
+    ├── Models/                    BudgetCategory, Expense, TaskItem
+    ├── Data/AppDbContext.cs       Contexte EF Core
+    ├── Data/Migrations/           Schéma de la base, versionné
+    ├── Services/                  Accès aux données (BudgetService, ExpenseService, TaskService)
+    ├── Components/Pages/          Accueil, Budget/, Depenses/, Taches/
+    ├── Components/Shared/         Sélecteur de mois, barre de progression, pagination, bouton supprimer
+    └── wwwroot/app.css            Styles (thème clair / sombre automatique selon macOS)
+```
+
+Les pages ne parlent jamais directement à la base : elles appellent les services, qui renvoient de simples `List<T>`.
+
+## Faire évoluer le modèle de données
+
+Après avoir modifié une classe de `Models/` :
+
+```bash
+cd dashboard-perso
+dotnet tool restore                                   # une seule fois
+cd src/DashboardPerso
+dotnet ef migrations add NomDeLaModification -o Data/Migrations
+dotnet run                                            # la migration est appliquée au démarrage
+```
+
+## Passer à Telerik UI for Blazor (plus tard)
+
+Les services renvoient des `List<T>`, ce qui correspond directement au paramètre `Data` du `TelerikGrid`. Pour migrer une page :
+
+1. Ajouter le paquet `Telerik.UI.for.Blazor` (flux NuGet Telerik, licence requise) et suivre leur guide d'installation (`AddTelerikBlazor()`, `<TelerikRootComponent>` dans `MainLayout.razor`, CSS du thème).
+2. Remplacer le `<QuickGrid Items="...">` de la page par un `<TelerikGrid Data="@items">` avec ses `<GridColumn>`. Les services et les modèles ne changent pas.
+
+Chaque grille est signalée par un commentaire dans le code (`TelerikGrid`).

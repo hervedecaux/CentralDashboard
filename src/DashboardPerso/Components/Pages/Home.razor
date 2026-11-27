@@ -1,0 +1,139 @@
+@page "/"
+@inject BudgetService Budget
+@inject ExpenseService Expenses
+@inject TaskService Tasks
+
+<PageTitle>Accueil · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Bonjour 👋</h1>
+    <p class="muted">@DateTime.Today.ToString("dddd d MMMM yyyy")</p>
+</header>
+
+@if (lines is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    <section class="cards">
+        <div class="card stat">
+            <span class="stat-label">Dépensé ce mois-ci</span>
+            <span class="stat-value">@spent.ToString("C")</span>
+            <span class="muted">sur @planned.ToString("C") prévus</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Reste à dépenser</span>
+            <span class="stat-value @(planned - spent < 0 ? "negative" : "")">@((planned - spent).ToString("C"))</span>
+            <ProgressBar Percent="@(planned > 0 ? (double)(spent / planned * 100) : 0)" />
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Tâches ouvertes</span>
+            <span class="stat-value">@openTasks</span>
+            @if (overdueTasks > 0)
+            {
+                <span class="negative">@overdueTasks en retard</span>
+            }
+            else
+            {
+                <span class="muted">aucune en retard</span>
+            }
+        </div>
+    </section>
+
+    <section class="grid-2">
+        <div class="card">
+            <div class="card-header">
+                <h2>Budget du mois</h2>
+                <a href="budget">Gérer</a>
+            </div>
+            @if (lines.Count == 0)
+            {
+                <p class="muted">Aucune catégorie. <a href="budget/nouveau">Créer une catégorie</a></p>
+            }
+            @foreach (var line in lines)
+            {
+                <div class="budget-line">
+                    <div class="budget-line-head">
+                        <span><span class="dot" style="background:@line.Category.Color"></span>@line.Category.Name</span>
+                        <span class="muted">@line.Spent.ToString("C") / @line.Category.MonthlyBudget.ToString("C")</span>
+                    </div>
+                    <ProgressBar Percent="line.Percent" Color="@line.Category.Color" Over="line.IsOver" />
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2>Prochaines tâches</h2>
+                <a href="taches/nouvelle">+ Ajouter</a>
+            </div>
+            @if (upcoming!.Count == 0)
+            {
+                <p class="muted">Rien à faire pour l'instant 🎉</p>
+            }
+            <ul class="list">
+                @foreach (var t in upcoming)
+                {
+                    <li>
+                        <a href="taches/@t.Id">@t.Title</a>
+                        <span class="@(t.IsOverdue ? "negative" : "muted")">
+                            @(t.DueDate?.ToString("d MMM") ?? "sans échéance")
+                        </span>
+                    </li>
+                }
+            </ul>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h2>Dernières dépenses</h2>
+            <a href="depenses/nouvelle">+ Ajouter</a>
+        </div>
+        @if (latest!.Count == 0)
+        {
+            <p class="muted">Aucune dépense enregistrée.</p>
+        }
+        <ul class="list">
+            @foreach (var e in latest)
+            {
+                <li>
+                    <span>
+                        <span class="muted">@e.Date.ToString("dd/MM")</span>
+                        <a href="depenses/@e.Id">@e.Label</a>
+                        @if (e.Category is not null)
+                        {
+                            <span class="badge" style="border-color:@e.Category.Color">@e.Category.Name</span>
+                        }
+                    </span>
+                    <span class="amount">@e.Amount.ToString("C")</span>
+                </li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    private List<BudgetLine>? lines;
+    private List<TaskItem>? upcoming;
+    private List<Expense>? latest;
+    private decimal spent, planned;
+    private int openTasks, overdueTasks;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateTime.Today;
+        lines = await Budget.GetMonthSummaryAsync(today.Year, today.Month);
+        spent = await Expenses.GetMonthTotalAsync(today.Year, today.Month);
+        planned = lines.Sum(l => l.Category.MonthlyBudget);
+
+        var allTasks = await Tasks.GetAllAsync();
+        var open = allTasks.Where(t => t.Status != TaskItemStatus.Done).ToList();
+        openTasks = open.Count;
+        overdueTasks = open.Count(t => t.IsOverdue);
+        upcoming = open.Take(6).ToList();
+
+        latest = await Expenses.GetLatestAsync(8);
+    }
+}

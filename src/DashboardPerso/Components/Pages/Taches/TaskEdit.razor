@@ -1,0 +1,98 @@
+@page "/taches/nouvelle"
+@page "/taches/{Id:int}"
+@inject TaskService Tasks
+@inject NavigationManager Nav
+
+<PageTitle>@(IsNew ? "Nouvelle tâche" : "Modifier la tâche") · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>@(IsNew ? "Nouvelle tâche" : "Modifier la tâche")</h1>
+</header>
+
+@if (model is null)
+{
+    <p class="muted">@(notFound ? "Tâche introuvable." : "Chargement…")</p>
+}
+else
+{
+    <div class="card form-card">
+        <EditForm Model="model" OnValidSubmit="Save" FormName="task-edit">
+            <DataAnnotationsValidator />
+
+            <label>
+                Titre
+                <InputText @bind-Value="model.Title" autofocus />
+                <ValidationMessage For="() => model.Title" />
+            </label>
+
+            <label>
+                Description
+                <InputTextArea @bind-Value="model.Description" rows="4" />
+            </label>
+
+            <div class="form-row">
+                <label>
+                    Échéance
+                    <InputDate @bind-Value="model.DueDate" />
+                </label>
+                <label>
+                    Priorité
+                    <InputSelect @bind-Value="model.Priority">
+                        @foreach (var p in Enum.GetValues<TaskPriority>())
+                        {
+                            <option value="@p">@p.Label()</option>
+                        }
+                    </InputSelect>
+                </label>
+                <label>
+                    Statut
+                    <InputSelect @bind-Value="model.Status">
+                        @foreach (var s in Enum.GetValues<TaskItemStatus>())
+                        {
+                            <option value="@s">@s.Label()</option>
+                        }
+                    </InputSelect>
+                </label>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Enregistrer</button>
+                <a class="btn btn-ghost" href="taches">Annuler</a>
+                @if (!IsNew)
+                {
+                    <span class="spacer"></span>
+                    <DeleteButton OnConfirm="Delete" />
+                }
+            </div>
+            @if (model.CompletedAt is { } done)
+            {
+                <p class="muted small">Terminée le @done.ToString("d MMMM yyyy à HH:mm").</p>
+            }
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private bool IsNew => Id is null;
+    private TaskItem? model;
+    private bool notFound;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        model = IsNew ? new TaskItem() : await Tasks.GetAsync(Id!.Value);
+        notFound = model is null;
+    }
+
+    private async Task Save()
+    {
+        await Tasks.SaveAsync(model!);
+        Nav.NavigateTo("taches");
+    }
+
+    private async Task Delete()
+    {
+        await Tasks.DeleteAsync(Id!.Value);
+        Nav.NavigateTo("taches");
+    }
+}

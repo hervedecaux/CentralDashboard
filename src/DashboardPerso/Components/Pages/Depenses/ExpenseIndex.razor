@@ -1,0 +1,90 @@
+@page "/depenses"
+@inject ExpenseService Expenses
+@inject BudgetService Budget
+
+<PageTitle>Dépenses · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Dépenses</h1>
+    <div class="actions">
+        <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
+        <a class="btn btn-primary" href="depenses/nouvelle">+ Nouvelle dépense</a>
+    </div>
+</header>
+
+@if (items is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    <div class="toolbar">
+        <label class="inline">
+            Catégorie
+            <select @bind="categoryFilter">
+                <option value="">Toutes</option>
+                <option value="-1">Sans catégorie</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
+        </label>
+        <span class="muted">@Filtered.Count() dépense(s) · total <strong>@Filtered.Sum(e => e.Amount).ToString("C")</strong></span>
+    </div>
+
+    @* Liste en mémoire : remplaçable par <TelerikGrid Data="@items"> sans toucher au service. *@
+    <div class="card table-card">
+        <QuickGrid Items="Filtered" Pagination="pagination" Class="table">
+            <PropertyColumn Title="Date" Property="e => e.Date" Format="dd/MM/yyyy" Sortable="true" IsDefaultSortColumn="true" InitialSortDirection="SortDirection.Descending" />
+            <TemplateColumn Title="Libellé" SortBy="byLabel">
+                <a href="depenses/@context.Id">@context.Label</a>
+            </TemplateColumn>
+            <TemplateColumn Title="Catégorie" SortBy="byCategory">
+                @if (context.Category is not null)
+                {
+                    <span class="badge" style="border-color:@context.Category.Color">@context.Category.Name</span>
+                }
+                else
+                {
+                    <span class="muted">—</span>
+                }
+            </TemplateColumn>
+            <PropertyColumn Title="Montant" Property="e => e.Amount" Format="C" Sortable="true" Align="Align.End" />
+        </QuickGrid>
+    </div>
+    <Pager State="pagination" />
+}
+
+@code {
+    private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private List<Expense>? items;
+    private List<BudgetCategory> categories = [];
+    private string categoryFilter = "";
+    private readonly PaginationState pagination = new() { ItemsPerPage = 20 };
+
+    private readonly GridSort<Expense> byLabel = GridSort<Expense>.ByAscending(e => e.Label);
+    private readonly GridSort<Expense> byCategory = GridSort<Expense>.ByAscending(e => e.Category == null ? "" : e.Category.Name);
+
+    private IQueryable<Expense> Filtered => categoryFilter switch
+    {
+        "" => items!.AsQueryable(),
+        "-1" => items!.Where(e => e.CategoryId == null).AsQueryable(),
+        var id => items!.Where(e => e.CategoryId == int.Parse(id)).AsQueryable()
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        categories = await Budget.GetCategoriesAsync();
+        await Load();
+    }
+
+    private async Task OnMonthChanged(DateOnly value)
+    {
+        month = value;
+        await Load();
+        await pagination.SetCurrentPageIndexAsync(0);
+    }
+
+    private async Task Load() => items = await Expenses.GetByMonthAsync(month.Year, month.Month);
+}

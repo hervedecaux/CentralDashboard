@@ -1,0 +1,24 @@
+@* Bouton de suppression en deux clics, sans boîte de dialogue JavaScript. *@
+@if (confirming)
+{
+    <span class="confirm">
+        Supprimer définitivement ?
+        <button type="button" class="btn btn-danger" @onclick="Confirm">Oui</button>
+        <button type="button" class="btn btn-ghost" @onclick="() => confirming = false">Non</button>
+    </span>
+}
+else
+{
+    <button type="button" class="btn btn-ghost danger" @onclick="() => confirming = true">Supprimer</button>
+}
+
+@code {
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    private bool confirming;
+
+    private async Task Confirm()
+    {
+        confirming = false;
+        await OnConfirm.InvokeAsync();
+    }
+}

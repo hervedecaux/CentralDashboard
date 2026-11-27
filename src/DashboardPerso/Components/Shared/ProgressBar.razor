@@ -1,0 +1,16 @@
+@{
+    var cls = Over || Percent > 100 ? "over" : Percent > 85 ? "warn" : "";
+    var width = Math.Min(Percent, 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    // La couleur de la catégorie n'est utilisée que tant que le budget n'est pas presque atteint.
+    var bg = cls == "" && Color is not null ? $"background:{Color};" : "";
+}
+<div class="progress" title="@Percent.ToString("0")%">
+    <div class="progress-fill @cls" style="width:@(width)%;@bg"></div>
+</div>
+
+@code {
+    [Parameter] public double Percent { get; set; }
+    [Parameter] public string? Color { get; set; }
+    /// <summary>Force l'affichage « dépassé » (ex. dépense sur une catégorie sans budget).</summary>
+    [Parameter] public bool Over { get; set; }
+}

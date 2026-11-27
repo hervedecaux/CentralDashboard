@@ -1,0 +1,76 @@
+@page "/budget"
+@inject BudgetService Budget
+
+<PageTitle>Budget · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Budget</h1>
+    <div class="actions">
+        <MonthSelector Value="month" ValueChanged="OnMonthChanged" />
+        <a class="btn btn-primary" href="budget/nouveau">+ Nouvelle catégorie</a>
+    </div>
+</header>
+
+@if (lines is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    <section class="cards">
+        <div class="card stat">
+            <span class="stat-label">Prévu</span>
+            <span class="stat-value">@lines.Sum(l => l.Category.MonthlyBudget).ToString("C")</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Dépensé (catégorisé)</span>
+            <span class="stat-value">@lines.Sum(l => l.Spent).ToString("C")</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Reste</span>
+            <span class="stat-value @(lines.Sum(l => l.Remaining) < 0 ? "negative" : "")">@lines.Sum(l => l.Remaining).ToString("C")</span>
+        </div>
+    </section>
+
+    @* Les données sont une simple List<BudgetLine> : un TelerikGrid Data="@lines" peut remplacer ce QuickGrid. *@
+    <div class="card table-card">
+        <QuickGrid Items="lines.AsQueryable()" Class="table">
+            <TemplateColumn Title="Catégorie" SortBy="byName" IsDefaultSortColumn="true">
+                <span class="dot" style="background:@context.Category.Color"></span>
+                <a href="budget/@context.Category.Id">@context.Category.Name</a>
+            </TemplateColumn>
+            <TemplateColumn Title="Prévu / mois" SortBy="byPlanned" Align="Align.End">
+                @context.Category.MonthlyBudget.ToString("C")
+            </TemplateColumn>
+            <TemplateColumn Title="Dépensé" SortBy="bySpent" Align="Align.End">
+                @context.Spent.ToString("C")
+            </TemplateColumn>
+            <TemplateColumn Title="Reste" SortBy="byRemaining" Align="Align.End">
+                <span class="@(context.Remaining < 0 ? "negative" : "")">@context.Remaining.ToString("C")</span>
+            </TemplateColumn>
+            <TemplateColumn Title="Consommé" Class="col-progress">
+                <ProgressBar Percent="context.Percent" Color="@context.Category.Color" Over="context.IsOver" />
+            </TemplateColumn>
+        </QuickGrid>
+    </div>
+}
+
+@code {
+    private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private List<BudgetLine>? lines;
+
+    private readonly GridSort<BudgetLine> byName = GridSort<BudgetLine>.ByAscending(l => l.Category.Name);
+    private readonly GridSort<BudgetLine> byPlanned = GridSort<BudgetLine>.ByAscending(l => l.Category.MonthlyBudget);
+    private readonly GridSort<BudgetLine> bySpent = GridSort<BudgetLine>.ByAscending(l => l.Spent);
+    private readonly GridSort<BudgetLine> byRemaining = GridSort<BudgetLine>.ByAscending(l => l.Remaining);
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task OnMonthChanged(DateOnly value)
+    {
+        month = value;
+        await Load();
+    }
+
+    private async Task Load() => lines = await Budget.GetMonthSummaryAsync(month.Year, month.Month);
+}

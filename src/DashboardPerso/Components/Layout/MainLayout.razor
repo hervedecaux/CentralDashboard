@@ -1,0 +1,22 @@
+@inherits LayoutComponentBase
+
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">Dashboard perso</div>
+        <nav>
+            <NavLink href="" Match="NavLinkMatch.All">Accueil</NavLink>
+            <NavLink href="budget">Budget</NavLink>
+            <NavLink href="depenses">Dépenses</NavLink>
+            <NavLink href="taches">Tâches</NavLink>
+        </nav>
+    </aside>
+    <main class="content">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Une erreur inattendue s'est produite.
+    <a href="." class="reload">Recharger</a>
+    <span class="dismiss">🗙</span>
+</div>

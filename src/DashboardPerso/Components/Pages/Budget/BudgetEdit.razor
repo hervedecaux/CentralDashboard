@@ -1,0 +1,79 @@
+@page "/budget/nouveau"
+@page "/budget/{Id:int}"
+@inject BudgetService Budget
+@inject NavigationManager Nav
+
+<PageTitle>@(IsNew ? "Nouvelle catégorie" : "Modifier la catégorie") · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>@(IsNew ? "Nouvelle catégorie" : "Modifier la catégorie")</h1>
+</header>
+
+@if (model is null)
+{
+    <p class="muted">@(notFound ? "Catégorie introuvable." : "Chargement…")</p>
+}
+else
+{
+    <div class="card form-card">
+        <EditForm Model="model" OnValidSubmit="Save" FormName="budget-edit">
+            <DataAnnotationsValidator />
+
+            <label>
+                Nom
+                <InputText @bind-Value="model.Name" autofocus />
+                <ValidationMessage For="() => model.Name" />
+            </label>
+
+            <label>
+                Budget mensuel (€)
+                <InputNumber @bind-Value="model.MonthlyBudget" step="0.01" />
+                <ValidationMessage For="() => model.MonthlyBudget" />
+            </label>
+
+            <label>
+                Couleur
+                <InputText type="color" @bind-Value="model.Color" />
+            </label>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Enregistrer</button>
+                <a class="btn btn-ghost" href="budget">Annuler</a>
+                @if (!IsNew)
+                {
+                    <span class="spacer"></span>
+                    <DeleteButton OnConfirm="Delete" />
+                }
+            </div>
+            @if (!IsNew)
+            {
+                <p class="muted small">Supprimer une catégorie conserve ses dépenses, qui deviennent « sans catégorie ».</p>
+            }
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private bool IsNew => Id is null;
+    private BudgetCategory? model;
+    private bool notFound;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        model = IsNew ? new BudgetCategory() : await Budget.GetAsync(Id!.Value);
+        notFound = model is null;
+    }
+
+    private async Task Save()
+    {
+        await Budget.SaveAsync(model!);
+        Nav.NavigateTo("budget");
+    }
+
+    private async Task Delete()
+    {
+        await Budget.DeleteAsync(Id!.Value);
+        Nav.NavigateTo("budget");
+    }
+}

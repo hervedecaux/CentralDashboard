@@ -1,0 +1,27 @@
+@* Pagination en français pour QuickGrid (remplace le <Paginator> anglais). *@
+@if (State.TotalItemCount is int total && total > State.ItemsPerPage)
+{
+    var last = State.LastPageIndex ?? 0;
+    <div class="pager">
+        <span>@total éléments</span>
+        <span class="actions">
+            <button class="btn btn-ghost" disabled="@(State.CurrentPageIndex == 0)" @onclick="() => GoTo(State.CurrentPageIndex - 1)">‹ Précédent</button>
+            <span>Page @(State.CurrentPageIndex + 1) sur @(last + 1)</span>
+            <button class="btn btn-ghost" disabled="@(State.CurrentPageIndex >= last)" @onclick="() => GoTo(State.CurrentPageIndex + 1)">Suivant ›</button>
+        </span>
+    </div>
+}
+
+@implements IDisposable
+
+@code {
+    [Parameter, EditorRequired] public PaginationState State { get; set; } = default!;
+
+    protected override void OnInitialized() => State.TotalItemCountChanged += OnCountChanged;
+
+    private void OnCountChanged(object? sender, int? count) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => State.TotalItemCountChanged -= OnCountChanged;
+
+    private Task GoTo(int index) => State.SetCurrentPageIndexAsync(index);
+}

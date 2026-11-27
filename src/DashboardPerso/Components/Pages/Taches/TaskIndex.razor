@@ -1,0 +1,79 @@
+@page "/taches"
+@inject TaskService Tasks
+
+<PageTitle>Tâches · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <h1>Tâches</h1>
+    <div class="actions">
+        <a class="btn btn-primary" href="taches/nouvelle">+ Nouvelle tâche</a>
+    </div>
+</header>
+
+<div class="toolbar">
+    <div class="segmented">
+        <button class="@(filter == "open" ? "active" : "")" @onclick='() => filter = "open"'>Ouvertes</button>
+        @foreach (var s in Enum.GetValues<TaskItemStatus>())
+        {
+            <button class="@(filter == s.ToString() ? "active" : "")" @onclick="() => filter = s.ToString()">@s.Label()</button>
+        }
+        <button class="@(filter == "all" ? "active" : "")" @onclick='() => filter = "all"'>Toutes</button>
+    </div>
+</div>
+
+@if (items is null)
+{
+    <p class="muted">Chargement…</p>
+}
+else
+{
+    <div class="card table-card">
+        @* Remplaçable par <TelerikGrid Data="@items"> sans toucher au service. *@
+        <QuickGrid Items="Filtered" Class="table">
+            <TemplateColumn Title="" Class="col-check">
+                <input type="checkbox" checked="@(context.Status == TaskItemStatus.Done)"
+                       title="Marquer comme terminée"
+                       @onchange="e => Toggle(context, (bool)e.Value!)" />
+            </TemplateColumn>
+            <TemplateColumn Title="Titre" SortBy="byTitle">
+                <a href="taches/@context.Id" class="@(context.Status == TaskItemStatus.Done ? "done" : "")">@context.Title</a>
+            </TemplateColumn>
+            <TemplateColumn Title="Priorité" SortBy="byPriority">
+                <span class="badge prio-@context.Priority.ToString().ToLowerInvariant()">@context.Priority.Label()</span>
+            </TemplateColumn>
+            <TemplateColumn Title="Statut" SortBy="byStatus">@context.Status.Label()</TemplateColumn>
+            <TemplateColumn Title="Échéance" SortBy="byDue">
+                <span class="@(context.IsOverdue ? "negative" : "")">@(context.DueDate?.ToString("dd/MM/yyyy") ?? "—")</span>
+            </TemplateColumn>
+        </QuickGrid>
+        @if (!Filtered.Any())
+        {
+            <p class="muted empty">Aucune tâche ici.</p>
+        }
+    </div>
+}
+
+@code {
+    private List<TaskItem>? items;
+    private string filter = "open";
+
+    private readonly GridSort<TaskItem> byTitle = GridSort<TaskItem>.ByAscending(t => t.Title);
+    private readonly GridSort<TaskItem> byPriority = GridSort<TaskItem>.ByDescending(t => t.Priority);
+    private readonly GridSort<TaskItem> byStatus = GridSort<TaskItem>.ByAscending(t => t.Status);
+    private readonly GridSort<TaskItem> byDue = GridSort<TaskItem>.ByAscending(t => t.DueDate ?? DateOnly.MaxValue);
+
+    private IQueryable<TaskItem> Filtered => filter switch
+    {
+        "all" => items!.AsQueryable(),
+        "open" => items!.Where(t => t.Status != TaskItemStatus.Done).AsQueryable(),
+        var s => items!.Where(t => t.Status.ToString() == s).AsQueryable()
+    };
+
+    protected override async Task OnInitializedAsync() => items = await Tasks.GetAllAsync();
+
+    private async Task Toggle(TaskItem task, bool done)
+    {
+        await Tasks.SetStatusAsync(task.Id, done ? TaskItemStatus.Done : TaskItemStatus.Todo);
+        items = await Tasks.GetAllAsync();
+    }
+}
