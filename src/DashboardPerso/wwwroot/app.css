@@ -229,3 +229,45 @@ input.search { min-width: 280px; }
 .link.danger { color: var(--danger); }
 .categories td.indent { padding-left: 2.2rem !important; }
 .categories td button.link { font-size: 0.85rem; }
+
+/* Planning d'activités */
+.week-label { min-width: 16rem; text-align: center; font-weight: 600; }
+.week-grid-scroll { overflow-x: auto; }
+.week-grid { display: grid; grid-template-columns: 52px repeat(7, minmax(110px, 1fr)); min-width: 820px; }
+.wg-corner, .wg-day-head { position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--border); z-index: 2; }
+.wg-day-head { display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0.6rem; font-size: 0.85rem; font-weight: 600; text-transform: capitalize; border-left: 1px solid var(--border); }
+.wg-day-head.today { color: var(--primary); }
+.wg-day-head button.link { font-size: 1.1rem; line-height: 1; padding: 0 0.2rem; }
+.wg-hours { display: flex; flex-direction: column; }
+.wg-hour { height: var(--hour-px); font-size: 0.72rem; color: var(--muted); text-align: right; padding: 0 0.4rem; transform: translateY(-0.45em); }
+.wg-hour:first-child { transform: none; }
+.wg-col {
+    position: relative; height: calc(var(--hour-px) * var(--hours)); border-left: 1px solid var(--border); cursor: copy;
+    background-image: repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px var(--hour-px));
+}
+.wg-col.today { background-color: color-mix(in srgb, var(--primary) 5%, transparent); }
+.wg-item {
+    position: absolute; overflow: hidden; border-radius: 6px; padding: 0.2rem 0.4rem; cursor: pointer; font-size: 0.78rem; line-height: 1.25;
+    background: color-mix(in srgb, var(--c) 18%, var(--surface)); border-left: 3px solid var(--c); color: var(--text);
+    display: flex; flex-direction: column; gap: 1px; z-index: 1;
+}
+.wg-item:hover { background: color-mix(in srgb, var(--c) 28%, var(--surface)); }
+.wg-item.done { opacity: .55; }
+.wg-item.done strong { text-decoration: line-through; }
+.wg-item-head { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
+.wg-item-head strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-item input[type=checkbox] { width: 13px; height: 13px; margin: 0; flex-shrink: 0; }
+.wg-time, .wg-sub { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-editor { border-left: 4px solid var(--c, var(--primary)); max-width: 760px; }
+.day-picker { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.day-picker button { border: none; background: transparent; padding: 0.4rem 0.7rem; font: inherit; color: var(--text); cursor: pointer; }
+.day-picker button + button { border-left: 1px solid var(--border); }
+.day-picker button.active { background: var(--primary); color: #fff; }
+.related-tasks { border: 1px dashed var(--border); border-radius: 8px; padding: 0.6rem 0.8rem; }
+.notice { display: block; }
+.day-activities .activity-line { display: flex; flex-direction: column; gap: 0.3rem; width: 100%; }
+.activity-time { font-variant-numeric: tabular-nums; min-width: 6.5rem; }
+.activity-tasks { list-style: none; margin: 0 0 0 2rem; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9rem; }
+.activity-tasks li { display: flex; justify-content: flex-start; gap: 0.6rem; align-items: center; padding: 0; border: none; }
+.rule-draft input[type=color], .inline-edit input[type=color] { min-width: 0; width: 44px; flex-shrink: 0; }
+.inline-edit select { max-width: 210px; }

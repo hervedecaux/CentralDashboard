@@ -37,6 +37,10 @@ public class TaskItem
 
     public TaskPriority Priority { get; set; } = TaskPriority.Normal;
 
+    /// <summary>Type d'activité (Travaux, Tâches ménagères…) : la tâche est proposée pendant ces créneaux du planning.</summary>
+    public int? ActivityCategoryId { get; set; }
+    public ActivityCategory? ActivityCategory { get; set; }
+
     public TaskItemStatus Status { get; set; } = TaskItemStatus.Todo;
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;

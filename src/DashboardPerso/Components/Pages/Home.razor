@@ -2,6 +2,7 @@
 @inject BudgetService Budget
 @inject ExpenseService Expenses
 @inject TaskService Tasks
+@inject ActivityService Activities
 
 <PageTitle>Accueil · Dashboard perso</PageTitle>
 
@@ -129,6 +130,63 @@ else
 
     <section class="card">
         <div class="card-header">
+            <h2>Au programme aujourd'hui</h2>
+            <a href="planning">Planning de la semaine</a>
+        </div>
+        @if (activities!.Count == 0)
+        {
+            <p class="muted">
+                Aucune activité prévue aujourd'hui.
+                @if (slotCount > 0 && weekIsEmpty)
+                {
+                    <button class="link" @onclick="ApplyWeek">Appliquer la semaine type à cette semaine</button>
+                }
+                else if (slotCount == 0)
+                {
+                    <a href="planning/semaine-type">Définir ma semaine type</a>
+                }
+            </p>
+        }
+        <ul class="list task-list day-activities">
+            @foreach (var a in activities)
+            {
+                var related = activityTasks.GetValueOrDefault(a.Id) ?? [];
+                <li @key="a.Id">
+                    <div class="activity-line">
+                        <span class="task-main">
+                            <input type="checkbox" checked="@a.Done" title="Fait" @onchange="e => ToggleActivity(a, (bool)e.Value!)" />
+                            <span class="muted activity-time">@a.Start.ToString("HH:mm")–@a.End.ToString("HH:mm")</span>
+                            <span class="dot" style="background:@a.Category!.Color"></span>
+                            <span class="@(a.Done ? "done" : "")">@(a.Title ?? a.Category.Name)</span>
+                            @if (a.Title is not null) { <span class="small muted">@a.Category.Name</span> }
+                        </span>
+                        @if (related.Count > 0)
+                        {
+                            <ul class="activity-tasks">
+                                @foreach (var t in related)
+                                {
+                                    <li @key="t.Id">
+                                        <a href="taches/@t.Id">@t.Title</a>
+                                        @if (t.PlannedFor is { } p && p <= today)
+                                        {
+                                            <span class="small positive">dans les tâches du jour</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="link small" @onclick="() => PlanToday(t)">+ Aujourd'hui</button>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </li>
+            }
+        </ul>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
             <h2>Dernières dépenses</h2>
             <a href="depenses/nouvelle">+ Ajouter</a>
         </div>
@@ -167,6 +225,11 @@ else
     private List<Expense>? latest;
     private decimal spent, planned, ytdSpent, ytdPlanned, income, plannedIncome;
     private int openTasks, overdueTasks;
+    private List<PlannedActivity>? activities;
+    private Dictionary<int, List<TaskItem>> activityTasks = [];
+    private int slotCount;
+    private bool weekIsEmpty;
+    private DateOnly today = DateOnly.FromDateTime(DateTime.Today);
 
     protected override async Task OnInitializedAsync()
     {
@@ -183,6 +246,7 @@ else
         ytdPlanned = Math.Round(year.Sum(l => l.AnnualBudget) * new BudgetPeriod(today.Year, null).ElapsedFraction(DateOnly.FromDateTime(today)), 2);
 
         await LoadTasks();
+        await LoadActivities();
         latest = await Expenses.GetLatestAsync(8);
     }
 
@@ -204,5 +268,44 @@ else
     {
         await Tasks.SetStatusAsync(task.Id, done ? TaskItemStatus.Done : TaskItemStatus.Todo);
         await LoadTasks();
+        await LoadActivities();
+    }
+
+    private async Task LoadActivities()
+    {
+        today = DateOnly.FromDateTime(DateTime.Today);
+        activities = await Activities.GetDayAsync(today);
+        slotCount = (await Activities.GetSlotsAsync()).Count;
+        weekIsEmpty = activities.Count == 0 && (await Activities.GetWeekAsync(ActivityService.MondayOf(today))).Count == 0;
+        var categories = await Activities.GetCategoriesAsync();
+        activityTasks = [];
+        foreach (var a in activities.Where(a => !a.Done))
+        {
+            // Tâches de la même catégorie (ou de sa catégorie principale / ses sous-catégories) à caser dans ce créneau.
+            var ids = new List<int> { a.CategoryId };
+            if (a.Category!.ParentId is { } p) ids.Add(p);
+            ids.AddRange(categories.Where(c => c.ParentId == a.CategoryId).Select(c => c.Id));
+            var list = await Tasks.GetOpenForActivityAsync(ids);
+            if (list.Count > 0) activityTasks[a.Id] = list.Take(4).ToList();
+        }
+    }
+
+    private async Task ToggleActivity(PlannedActivity a, bool done)
+    {
+        await Activities.SetDoneAsync(a.Id, done);
+        await LoadActivities();
+    }
+
+    private async Task ApplyWeek()
+    {
+        await Activities.ApplyTemplateAsync(ActivityService.MondayOf(today));
+        await LoadActivities();
+    }
+
+    private async Task PlanToday(TaskItem t)
+    {
+        await Tasks.PlanAsync(t.Id, today);
+        await LoadTasks();
+        await LoadActivities();
     }
 }

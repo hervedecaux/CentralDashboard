@@ -1,0 +1,16 @@
+@* Champ heure (HH:mm) lié à un TimeOnly. Le navigateur envoie « 13:15 » (sans secondes) : on le lit nous-mêmes. *@
+<input type="time" step="900" value="@Value.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture)" @onchange="Changed" />
+
+@code {
+    [Parameter] public TimeOnly Value { get; set; }
+    [Parameter] public EventCallback<TimeOnly> ValueChanged { get; set; }
+
+    private async Task Changed(ChangeEventArgs e)
+    {
+        if (TimeOnly.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var t))
+        {
+            Value = t;
+            await ValueChanged.InvokeAsync(t);
+        }
+    }
+}

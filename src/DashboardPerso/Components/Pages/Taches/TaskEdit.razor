@@ -1,6 +1,7 @@
 @page "/taches/nouvelle"
 @page "/taches/{Id:int}"
 @inject TaskService Tasks
+@inject ActivityService Activities
 @inject NavigationManager Nav
 
 <PageTitle>@(IsNew ? "Nouvelle tâche" : "Modifier la tâche") · Dashboard perso</PageTitle>
@@ -42,6 +43,18 @@ else
                 </div>
                 <span class="muted small">Jour où vous comptez la faire (listes Aujourd'hui / Demain), indépendamment de l'échéance.</span>
             </div>
+
+            <label>
+                Type d'activité
+                <InputSelect @bind-Value="model.ActivityCategoryId">
+                    <option value="">— aucun —</option>
+                    @foreach (var c in activityCategories)
+                    {
+                        <option value="@c.Id">@(c.IsSubcategory ? "↳ " : "")@c.Name</option>
+                    }
+                </InputSelect>
+                <span class="muted small">La tâche sera proposée pendant les créneaux de ce type dans le planning (ex. Travaux, Tâches ménagères).</span>
+            </label>
 
             <div class="form-row">
                 <label>
@@ -92,9 +105,11 @@ else
     private bool IsNew => Id is null;
     private TaskItem? model;
     private bool notFound;
+    private List<ActivityCategory> activityCategories = [];
 
     protected override async Task OnParametersSetAsync()
     {
+        activityCategories = await Activities.GetCategoriesAsync();
         model = IsNew ? new TaskItem() : await Tasks.GetAsync(Id!.Value);
         notFound = model is null;
     }

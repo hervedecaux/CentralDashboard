@@ -90,6 +90,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 | **Opérations** (`/depenses`) | Dépenses et recettes. Liste par mois ou par année (bouton Mois / Année, ou `/depenses?vue=annee`), une vue par provenance (compte, chaque carte), filtre par catégorie, transferts affichables ou masqués, tri, pagination, total. Ajout, modification, suppression. La liste garde sa vue, sa période, ses filtres et sa page au retour d'une fiche. |
 | **Import** (`/depenses/import`) | Import du relevé CSV du Crédit Agricole : aperçu, catégories proposées par des règles, doublons écartés. |
 | **Tâches** (`/taches`) | **Aujourd'hui** et **Demain** : choisir les tâches à faire dans la journée (« + Aujourd'hui », « + Demain », ajout rapide), les cocher au fil de la journée, reporter à demain celles qui ne sont pas faites (une tâche non faite reste aussi dans la liste du jour, marquée « Reportée »). Les tâches du jour s'affichent et se cochent sur l'accueil. Filtres par statut, priorité, échéance (en rouge si dépassée), case à cocher pour terminer. Ajout, modification, suppression. |
+| **Planning** (`/planning`, `/planning/semaine-type`) | Semaine type (créneaux habituels par jour et heure) et planning de chaque semaine, par catégorie d'activité (travail, travaux, ménage, loisirs…). Voir « Planning d'activités ». |
 
 ## Catégories et budget
 
@@ -141,6 +142,18 @@ Ce qui est importé :
 - **Catégories** : la catégorie par défaut du bénéficiaire est appliquée en premier. Sinon, la page **Règles de catégorie** associe un texte (ex. `ORANGE SA`) à une catégorie. Les majuscules et les accents ne comptent pas, et la règle la plus longue l'emporte. Le lien **+ règle** de l'aperçu crée une règle à partir d'une ligne et l'applique aussitôt aux autres.
 
 Le libellé bancaire complet est conservé dans les notes de chaque dépense importée.
+
+## Planning d'activités
+
+- **Réglages › Activités** : catégories d'activités modifiables (nom, couleur, sous-catégories). Au départ : Travail, Travaux, Tâches ménagères, Loisirs › Sport, Musique, Lecture, Photo.
+- **Semaine type** : vos créneaux habituels (jour, heure de début et de fin, catégorie, précision facultative comme « Piano »). Un créneau peut être créé d'un coup pour plusieurs jours (lundi → vendredi, week-end…). Le temps prévu par catégorie s'affiche sous la grille.
+- **Planning** : la semaine réelle. « Appliquer la semaine type » y copie les créneaux habituels (sans doublon si on recommence), qu'on ajuste ensuite : déplacer, supprimer, ajouter une activité ponctuelle, cocher ce qui est fait. Modifier la semaine type ne change pas les semaines déjà planifiées. En bas : temps fait / prévu par catégorie, comparé à la semaine type.
+- **Lien avec les tâches** : une tâche peut avoir un type d'activité (ex. « Repeindre le portail » → Travaux). En ouvrant un créneau Travaux du planning, les tâches Travaux à faire sont proposées, avec un bouton pour les prévoir ce jour-là.
+- **Accueil** : la carte « Au programme aujourd'hui » liste les activités du jour, à cocher, avec les tâches correspondantes à caser.
+
+![Planning de la semaine](docs/apercu-planning.png)
+
+![Semaine type](docs/apercu-semaine-type.png)
 
 ## Tests
 

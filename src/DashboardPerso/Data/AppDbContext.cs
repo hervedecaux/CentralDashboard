@@ -12,6 +12,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Payee> Payees => Set<Payee>();
     public DbSet<ExpenseSplit> ExpenseSplits => Set<ExpenseSplit>();
+    public DbSet<ActivityCategory> ActivityCategories => Set<ActivityCategory>();
+    public DbSet<WeeklySlot> WeeklySlots => Set<WeeklySlot>();
+    public DbSet<PlannedActivity> PlannedActivities => Set<PlannedActivity>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
@@ -72,6 +75,40 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(r => r.CategoryId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<TaskItem>().HasIndex(t => t.Status);
+        modelBuilder.Entity<TaskItem>()
+            .HasOne(t => t.ActivityCategory).WithMany()
+            .HasForeignKey(t => t.ActivityCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Planning d'activités
+        modelBuilder.Entity<ActivityCategory>()
+            .HasOne(c => c.Parent).WithMany(c => c.Children)
+            .HasForeignKey(c => c.ParentId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<WeeklySlot>()
+            .HasOne(s => s.Category).WithMany()
+            .HasForeignKey(s => s.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PlannedActivity>()
+            .HasOne(a => a.Category).WithMany()
+            .HasForeignKey(a => a.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PlannedActivity>()
+            .HasOne(a => a.Slot).WithMany()
+            .HasForeignKey(a => a.SlotId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<PlannedActivity>().HasIndex(a => a.Date);
+
+        // Catégories d'activités de départ, modifiables dans Réglages › Activités.
+        modelBuilder.Entity<ActivityCategory>().HasData(
+            new ActivityCategory { Id = 1, Name = "Travail", Color = "#4f6bed", SortOrder = 1 },
+            new ActivityCategory { Id = 2, Name = "Travaux", Color = "#b7702a", SortOrder = 2 },
+            new ActivityCategory { Id = 3, Name = "Tâches ménagères", Color = "#2e9e6a", SortOrder = 3 },
+            new ActivityCategory { Id = 4, Name = "Loisirs", Color = "#c2457a", SortOrder = 4 },
+            new ActivityCategory { Id = 5, Name = "Sport", Color = "#e0582b", ParentId = 4, SortOrder = 1 },
+            new ActivityCategory { Id = 6, Name = "Musique", Color = "#7a5bd1", ParentId = 4, SortOrder = 2 },
+            new ActivityCategory { Id = 7, Name = "Lecture", Color = "#2b8fb3", ParentId = 4, SortOrder = 3 },
+            new ActivityCategory { Id = 8, Name = "Photo", Color = "#d4a21b", ParentId = 4, SortOrder = 4 });
 
         // Quelques catégories de départ, modifiables depuis la page Budget.
         modelBuilder.Entity<BudgetCategory>().HasData(

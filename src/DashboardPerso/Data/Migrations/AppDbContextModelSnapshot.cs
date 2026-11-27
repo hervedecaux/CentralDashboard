@@ -64,6 +64,97 @@ namespace DashboardPerso.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DashboardPerso.Models.ActivityCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
+
+                    b.ToTable("ActivityCategories");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Color = "#4f6bed",
+                            Name = "Travail",
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Color = "#b7702a",
+                            Name = "Travaux",
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Color = "#2e9e6a",
+                            Name = "Tâches ménagères",
+                            SortOrder = 3
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Color = "#c2457a",
+                            Name = "Loisirs",
+                            SortOrder = 4
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Color = "#e0582b",
+                            Name = "Sport",
+                            ParentId = 4,
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Color = "#7a5bd1",
+                            Name = "Musique",
+                            ParentId = 4,
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Color = "#2b8fb3",
+                            Name = "Lecture",
+                            ParentId = 4,
+                            SortOrder = 3
+                        },
+                        new
+                        {
+                            Id = 8,
+                            Color = "#d4a21b",
+                            Name = "Photo",
+                            ParentId = 4,
+                            SortOrder = 4
+                        });
+                });
+
             modelBuilder.Entity("DashboardPerso.Models.BudgetCategory", b =>
                 {
                     b.Property<int>("Id")
@@ -275,10 +366,56 @@ namespace DashboardPerso.Data.Migrations
                     b.ToTable("Payees");
                 });
 
+            modelBuilder.Entity("DashboardPerso.Models.PlannedActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Done")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<TimeOnly>("End")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SlotId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<TimeOnly>("Start")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("SlotId");
+
+                    b.ToTable("PlannedActivities");
+                });
+
             modelBuilder.Entity("DashboardPerso.Models.TaskItem", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ActivityCategoryId")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("CompletedAt")
@@ -310,9 +447,54 @@ namespace DashboardPerso.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ActivityCategoryId");
+
                     b.HasIndex("Status");
 
                     b.ToTable("Tasks");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.WeeklySlot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Day")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<TimeOnly>("End")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<TimeOnly>("Start")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("WeeklySlots");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.ActivityCategory", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.ActivityCategory", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Parent");
                 });
 
             modelBuilder.Entity("DashboardPerso.Models.BudgetCategory", b =>
@@ -386,6 +568,50 @@ namespace DashboardPerso.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("DefaultCategory");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.PlannedActivity", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.ActivityCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DashboardPerso.Models.WeeklySlot", "Slot")
+                        .WithMany()
+                        .HasForeignKey("SlotId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Slot");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.TaskItem", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.ActivityCategory", "ActivityCategory")
+                        .WithMany()
+                        .HasForeignKey("ActivityCategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ActivityCategory");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.WeeklySlot", b =>
+                {
+                    b.HasOne("DashboardPerso.Models.ActivityCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("DashboardPerso.Models.ActivityCategory", b =>
+                {
+                    b.Navigation("Children");
                 });
 
             modelBuilder.Entity("DashboardPerso.Models.BudgetCategory", b =>

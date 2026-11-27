@@ -35,6 +35,7 @@ builder.Services.AddDbContextFactory<AppDbContext>(o => o.UseSqlite($"Data Sourc
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<ExpenseService>();
 builder.Services.AddScoped<TaskService>();
+builder.Services.AddScoped<ActivityService>();
 builder.Services.AddScoped<CategoryRuleService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<AccountService>();
