@@ -30,6 +30,19 @@ else
                 <InputTextArea @bind-Value="model.Description" rows="4" />
             </label>
 
+            <div class="field">
+                <span>Prévue pour</span>
+                <div class="plan-picker">
+                    <div class="segmented">
+                        <button type="button" class="@(model.PlannedFor is null ? "active" : "")" @onclick="() => model.PlannedFor = null">Pas encore</button>
+                        <button type="button" class="@(model.PlannedFor == today ? "active" : "")" @onclick="() => model.PlannedFor = today">Aujourd'hui</button>
+                        <button type="button" class="@(model.PlannedFor == today.AddDays(1) ? "active" : "")" @onclick="() => model.PlannedFor = today.AddDays(1)">Demain</button>
+                    </div>
+                    <InputDate @bind-Value="model.PlannedFor" />
+                </div>
+                <span class="muted small">Jour où vous comptez la faire (listes Aujourd'hui / Demain), indépendamment de l'échéance.</span>
+            </div>
+
             <div class="form-row">
                 <label>
                     Échéance
@@ -73,6 +86,8 @@ else
 }
 
 @code {
+    private readonly DateOnly today = DateOnly.FromDateTime(DateTime.Today);
+
     [Parameter] public int? Id { get; set; }
     private bool IsNew => Id is null;
     private TaskItem? model;

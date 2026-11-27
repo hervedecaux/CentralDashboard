@@ -209,3 +209,14 @@ input.search { min-width: 280px; }
 .table.monthly td, .table.monthly th { white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0.5rem; padding-right: 0.5rem; }
 .content .table-card table.table:not(.quickgrid) tfoot th { border-top: 2px solid var(--border); text-transform: none; letter-spacing: normal; font-size: inherit; color: var(--text); font-weight: 600; }
 .budget-tree td.col-justify-end, .budget-tree th.col-justify-end { white-space: nowrap; }
+
+/* Tâches du jour */
+.day-plan { display: flex; flex-direction: column; gap: 0.8rem; }
+.day-plan .card-header h2 { display: flex; align-items: baseline; gap: 0.6rem; }
+.quick-add { display: flex; gap: 0.5rem; }
+.quick-add input { flex: 1; }
+.task-list li { gap: 1rem; }
+.task-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; min-width: 0; }
+.task-actions { display: flex; gap: 0.6rem; align-items: center; white-space: nowrap; }
+.btn.small { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+.plan-picker { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }

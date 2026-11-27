@@ -79,24 +79,51 @@ else
 
         <div class="card">
             <div class="card-header">
-                <h2>Prochaines tâches</h2>
-                <a href="taches/nouvelle">+ Ajouter</a>
+                <h2>Tâches du jour</h2>
+                <span>
+                    @if (dayTasks!.Count > 0) { <span class="muted">@dayTasks.Count(t => t.Status == TaskItemStatus.Done) / @dayTasks.Count · </span> }
+                    <a href="taches">Planifier</a>
+                </span>
             </div>
-            @if (upcoming!.Count == 0)
+            @if (dayTasks.Count == 0)
             {
-                <p class="muted">Rien à faire pour l'instant 🎉</p>
+                <p class="muted">Rien de prévu aujourd'hui. <a href="taches">Choisir les tâches du jour</a></p>
             }
-            <ul class="list">
-                @foreach (var t in upcoming)
+            <ul class="list task-list">
+                @foreach (var t in dayTasks)
                 {
-                    <li>
-                        <a href="taches/@t.Id">@t.Title</a>
-                        <span class="@(t.IsOverdue ? "negative" : "muted")">
-                            @(t.DueDate?.ToString("d MMM") ?? "sans échéance")
+                    <li @key="t.Id">
+                        <span class="task-main">
+                            <input type="checkbox" checked="@(t.Status == TaskItemStatus.Done)" title="Marquer comme terminée"
+                                   @onchange="e => ToggleTask(t, (bool)e.Value!)" />
+                            <a href="taches/@t.Id" class="@(t.Status == TaskItemStatus.Done ? "done" : "")">@t.Title</a>
+                            @if (t.Priority == TaskPriority.High) { <span class="badge prio-high">Haute</span> }
+                            @if (t.IsCarriedOver) { <span class="badge warn">Reportée</span> }
                         </span>
+                        @if (t.DueDate is { } due)
+                        {
+                            <span class="small @(t.IsOverdue ? "negative" : "muted")">@due.ToString("d MMM")</span>
+                        }
                     </li>
                 }
             </ul>
+            <p class="muted small">
+                Demain : @(tomorrowCount == 0 ? "rien de prévu" : $"{tomorrowCount} tâche(s) prévue(s)") ·
+                <a href="taches?vue=demain">Préparer demain</a>
+            </p>
+            @if (upcoming!.Count > 0)
+            {
+                <h3 class="small muted">Prochaines échéances</h3>
+                <ul class="list">
+                    @foreach (var t in upcoming)
+                    {
+                        <li>
+                            <a href="taches/@t.Id">@t.Title</a>
+                            <span class="@(t.IsOverdue ? "negative" : "muted")">@t.DueDate?.ToString("d MMM")</span>
+                        </li>
+                    }
+                </ul>
+            }
         </div>
     </section>
 
@@ -135,6 +162,8 @@ else
 @code {
     private List<BudgetLine>? lines;
     private List<TaskItem>? upcoming;
+    private List<TaskItem>? dayTasks;
+    private int tomorrowCount;
     private List<Expense>? latest;
     private decimal spent, planned, ytdSpent, ytdPlanned, income, plannedIncome;
     private int openTasks, overdueTasks;
@@ -153,12 +182,27 @@ else
         ytdSpent = year.Sum(l => l.Spent);
         ytdPlanned = Math.Round(year.Sum(l => l.AnnualBudget) * new BudgetPeriod(today.Year, null).ElapsedFraction(DateOnly.FromDateTime(today)), 2);
 
+        await LoadTasks();
+        latest = await Expenses.GetLatestAsync(8);
+    }
+
+    private async Task LoadTasks()
+    {
+        var day = DateOnly.FromDateTime(DateTime.Today);
         var allTasks = await Tasks.GetAllAsync();
         var open = allTasks.Where(t => t.Status != TaskItemStatus.Done).ToList();
         openTasks = open.Count;
         overdueTasks = open.Count(t => t.IsOverdue);
-        upcoming = open.Take(6).ToList();
+        dayTasks = await Tasks.GetDayListAsync(day);
+        tomorrowCount = (await Tasks.GetPlannedForAsync(day.AddDays(1))).Count(t => t.Status != TaskItemStatus.Done);
+        // Échéances des tâches qui ne sont pas déjà dans la liste du jour.
+        var inDay = dayTasks.Select(t => t.Id).ToHashSet();
+        upcoming = open.Where(t => t.DueDate is not null && !inDay.Contains(t.Id)).Take(4).ToList();
+    }
 
-        latest = await Expenses.GetLatestAsync(8);
+    private async Task ToggleTask(TaskItem task, bool done)
+    {
+        await Tasks.SetStatusAsync(task.Id, done ? TaskItemStatus.Done : TaskItemStatus.Todo);
+        await LoadTasks();
     }
 }
