@@ -73,10 +73,8 @@ public sealed class SplitAndBalanceTests : IDisposable
     }
 
     [Fact]
-    public async Task Une_recette_n_accepte_pas_une_categorie_de_depenses()
+    public async Task Une_recette_sans_categorie_ne_compte_pas_dans_les_depenses()
     {
-        await Assert.ThrowsAsync<InvalidOperationException>(() => expenses.SaveAsync(
-            new Expense { Date = new DateOnly(2026, 3, 1), Label = "Salaire", Amount = 2000m, IsIncome = true, CategoryId = 2 }));
         await expenses.SaveAsync(new Expense { Date = new DateOnly(2026, 3, 1), Label = "Salaire", Amount = 2000m, IsIncome = true });
         Assert.Equal(0m, await expenses.GetMonthTotalAsync(2026, 3));
     }

@@ -90,7 +90,7 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
                 if (expense.CategoryId is null && splits.Count == 0 && !expense.IsTransfer)
                 {
                     if (payee.DefaultIsTransfer) expense.IsTransfer = true;
-                    else if (payee.DefaultCategoryId is { } def && await KindOfAsync(db, def) == Kind(expense))
+                    else if (payee.DefaultCategoryId is { } def && Accepts(expense, await KindOfAsync(db, def)))
                         expense.CategoryId = def;
                 }
             }
@@ -105,12 +105,12 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         var used = splits.Select(x => x.CategoryId).Append(expense.CategoryId).OfType<int>().Distinct().ToList();
         if (used.Count > 0)
         {
-            var wrong = await db.BudgetCategories.Where(c => used.Contains(c.Id) && c.Kind != Kind(expense))
+            // Une recette peut aller dans une catégorie de dépenses : c'est alors un remboursement, déduit de cette catégorie.
+            var wrong = expense.IsIncome ? null : await db.BudgetCategories
+                .Where(c => used.Contains(c.Id) && c.Kind == CategoryKind.Income)
                 .Select(c => c.Name).FirstOrDefaultAsync();
             if (wrong is not null)
-                throw new InvalidOperationException(expense.IsIncome
-                    ? $"« {wrong} » est une catégorie de dépenses : choisissez une catégorie de recettes."
-                    : $"« {wrong} » est une catégorie de recettes : choisissez une catégorie de dépenses.");
+                throw new InvalidOperationException($"« {wrong} » est une catégorie de recettes : choisissez une catégorie de dépenses.");
         }
 
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -128,7 +128,8 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         expense.Splits = splits;
     }
 
-    private static CategoryKind Kind(Expense e) => e.IsIncome ? CategoryKind.Income : CategoryKind.Expense;
+    /// <summary>Une dépense ne va que dans une catégorie de dépenses ; une recette dans n'importe laquelle (remboursement).</summary>
+    private static bool Accepts(Expense e, CategoryKind kind) => e.IsIncome || kind == CategoryKind.Expense;
 
     private static Task<CategoryKind> KindOfAsync(AppDbContext db, int categoryId) =>
         db.BudgetCategories.Where(c => c.Id == categoryId).Select(c => c.Kind).FirstOrDefaultAsync();
@@ -144,7 +145,16 @@ public class ExpenseService(IDbContextFactory<AppDbContext> dbFactory)
         await using var db = await dbFactory.CreateDbContextAsync();
         var from = new DateOnly(year, month, 1);
         var to = from.AddMonths(1);
-        return await db.Expenses.Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && !e.IsIncome).SumAsync(e => e.Amount);
+        // Dépensé net : dépenses moins remboursements (crédits classés dans une catégorie de dépenses).
+        var spent = await db.Expenses.Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && !e.IsIncome).SumAsync(e => e.Amount);
+        var refunds = await db.Expenses
+            .Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && e.IsIncome && e.Category!.Kind == CategoryKind.Expense)
+            .SumAsync(e => e.Amount);
+        var refundSplits = await db.ExpenseSplits
+            .Where(x => x.Expense!.Date >= from && x.Expense.Date < to && !x.Expense.IsTransfer && x.Expense.IsIncome
+                        && x.Category!.Kind == CategoryKind.Expense)
+            .SumAsync(x => x.Amount);
+        return spent - refunds - refundSplits;
     }
 
 }

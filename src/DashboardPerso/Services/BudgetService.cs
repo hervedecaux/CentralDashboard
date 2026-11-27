@@ -43,7 +43,10 @@ public record BudgetOverview(
     public decimal AnnualExpenses => Expenses.Sum(l => l.AnnualBudget);
     public decimal AnnualIncome => Incomes.Sum(l => l.AnnualBudget);
 
-    /// <summary>Total dépensé, non catégorisé compris (hors transferts).</summary>
+    /// <summary>Crédits classés dans des catégories de dépenses : déjà déduits des dépenses, hors recettes.</summary>
+    public decimal Refunds { get; init; }
+
+    /// <summary>Total dépensé net des remboursements, non catégorisé compris (hors transferts).</summary>
     public decimal ActualExpenses => Expenses.Sum(l => l.Spent) + UncategorizedExpenses;
 
     /// <summary>Total des recettes, non catégorisées comprises (hors transferts).</summary>
@@ -232,16 +235,35 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
         var incomes = await SummaryAsync(db, period, CategoryKind.Income);
         var from = period.From;
         var to = period.To;
-        var totals = await db.Expenses
-            .Where(e => e.Date >= from && e.Date < to && !e.IsTransfer)
+
+        // Non catégorisé : opérations sans catégorie ni ventilation, et parts de ventilation sans catégorie.
+        var direct = await db.Expenses
+            .Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && e.CategoryId == null && !e.Splits.Any())
             .GroupBy(e => e.IsIncome)
             .Select(g => new { IsIncome = g.Key, Total = g.Sum(e => e.Amount) })
             .ToListAsync();
-        var totalExpenses = totals.Where(t => !t.IsIncome).Sum(t => t.Total);
-        var totalIncome = totals.Where(t => t.IsIncome).Sum(t => t.Total);
+        var parts = await db.ExpenseSplits
+            .Where(x => x.Expense!.Date >= from && x.Expense.Date < to && !x.Expense.IsTransfer && x.CategoryId == null)
+            .GroupBy(x => x.Expense!.IsIncome)
+            .Select(g => new { IsIncome = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync();
+        var uncategorized = direct.Concat(parts).ToList();
+
+        // Remboursements : crédits classés dans une catégorie de dépenses (déjà déduits des dépenses).
+        var refunds = await db.Expenses
+                .Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && e.IsIncome && e.Category!.Kind == CategoryKind.Expense)
+                .SumAsync(e => e.Amount)
+            + await db.ExpenseSplits
+                .Where(x => x.Expense!.Date >= from && x.Expense.Date < to && !x.Expense.IsTransfer && x.Expense.IsIncome
+                            && x.Category!.Kind == CategoryKind.Expense)
+                .SumAsync(x => x.Amount);
+
         return new BudgetOverview(expenses, incomes,
-            totalExpenses - expenses.Sum(l => l.Spent),
-            totalIncome - incomes.Sum(l => l.Spent));
+            uncategorized.Where(t => !t.IsIncome).Sum(t => t.Total),
+            uncategorized.Where(t => t.IsIncome).Sum(t => t.Total))
+        {
+            Refunds = refunds,
+        };
     }
 
     /// <summary>
@@ -255,13 +277,16 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
         var to = from.AddYears(1);
         var income = kind == CategoryKind.Income;
 
+        // Opérations des catégories de ce type (sens contraire déduit), plus les opérations de ce sens sans catégorie.
         var direct = await db.Expenses
-            .Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && e.IsIncome == income && !e.Splits.Any())
-            .Select(e => new { e.Date, e.CategoryId, e.Amount })
+            .Where(e => e.Date >= from && e.Date < to && !e.IsTransfer && !e.Splits.Any()
+                        && (e.CategoryId == null ? e.IsIncome == income : e.Category!.Kind == kind))
+            .Select(e => new { e.Date, e.CategoryId, Amount = e.IsIncome == income ? e.Amount : -e.Amount })
             .ToListAsync();
         var splits = await db.ExpenseSplits
-            .Where(x => x.Expense!.Date >= from && x.Expense.Date < to && !x.Expense.IsTransfer && x.Expense.IsIncome == income)
-            .Select(x => new { x.Expense!.Date, x.CategoryId, x.Amount })
+            .Where(x => x.Expense!.Date >= from && x.Expense.Date < to && !x.Expense.IsTransfer
+                        && (x.CategoryId == null ? x.Expense.IsIncome == income : x.Category!.Kind == kind))
+            .Select(x => new { x.Expense!.Date, x.CategoryId, Amount = x.Expense.IsIncome == income ? x.Amount : -x.Amount })
             .ToListAsync();
 
         var categories = Order(await db.BudgetCategories.AsNoTracking().ToListAsync());
@@ -289,19 +314,18 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
         var to = period.To;
         var income = kind == CategoryKind.Income;
 
-        // Opérations non ventilées + parts des opérations ventilées (hors transferts),
-        // du même sens que les catégories suivies et rattachées à une catégorie de ce type.
+        // Opérations non ventilées + parts des opérations ventilées (hors transferts) rattachées à une catégorie de ce type.
+        // Une opération de sens contraire est déduite : un remboursement (crédit) réduit le dépensé de sa catégorie.
         var direct = await db.Expenses
-            .Where(e => e.Date >= from && e.Date < to && e.CategoryId != null && !e.IsTransfer
-                        && e.IsIncome == income && e.Category!.Kind == kind)
+            .Where(e => e.Date >= from && e.Date < to && e.CategoryId != null && !e.IsTransfer && e.Category!.Kind == kind)
             .GroupBy(e => e.CategoryId!.Value)
-            .Select(g => new { CategoryId = g.Key, Total = g.Sum(e => e.Amount) })
+            .Select(g => new { CategoryId = g.Key, Total = g.Sum(e => e.IsIncome == income ? e.Amount : -e.Amount) })
             .ToListAsync();
         var splits = await db.ExpenseSplits
             .Where(s => s.CategoryId != null && s.Expense!.Date >= from && s.Expense.Date < to
-                        && !s.Expense.IsTransfer && s.Expense.IsIncome == income && s.Category!.Kind == kind)
+                        && !s.Expense.IsTransfer && s.Category!.Kind == kind)
             .GroupBy(s => s.CategoryId!.Value)
-            .Select(g => new { CategoryId = g.Key, Total = g.Sum(s => s.Amount) })
+            .Select(g => new { CategoryId = g.Key, Total = g.Sum(s => s.Expense!.IsIncome == income ? s.Amount : -s.Amount) })
             .ToListAsync();
         var spentByCategory = direct.Concat(splits)
             .GroupBy(x => x.CategoryId)

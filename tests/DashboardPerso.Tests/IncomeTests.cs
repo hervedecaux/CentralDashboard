@@ -83,11 +83,39 @@ public sealed class IncomeTests : IDisposable
         var lines = await budget.GetSummaryAsync(new BudgetPeriod(2026, 3), CategoryKind.Income);
         Assert.Equal(2500m, lines.Single(l => l.Category.Id == salaire.Id).Spent);
 
+        // Une dépense ne peut pas aller (même en partie) dans une catégorie de recettes.
         await Assert.ThrowsAsync<InvalidOperationException>(() => expenses.SaveAsync(new Expense
         {
-            Date = new DateOnly(2026, 3, 2), Label = "Mélange", Amount = 100m, IsIncome = true,
+            Date = new DateOnly(2026, 3, 2), Label = "Mélange", Amount = 100m,
             Splits = [new() { CategoryId = salaire.Id, Amount = 50m }, new() { CategoryId = 2, Amount = 50m }],
         }));
+    }
+
+    [Fact]
+    public async Task Un_credit_dans_une_categorie_de_depenses_est_un_remboursement_deduit()
+    {
+        await expenses.SaveAsync(new Expense { Date = new DateOnly(2026, 3, 2), Label = "Médecin", Amount = 60m, CategoryId = 4 });
+        await expenses.SaveAsync(new Expense { Date = new DateOnly(2026, 3, 9), Label = "CPAM", Amount = 42m, IsIncome = true, CategoryId = 4 });
+        // Crédit ventilé : une part de salaire, une part remboursée en Alimentation.
+        await expenses.SaveAsync(new Expense
+        {
+            Date = new DateOnly(2026, 3, 10), Label = "Virement", Amount = 2100m, IsIncome = true,
+            Splits = [new() { CategoryId = salaire.Id, Amount = 2000m }, new() { CategoryId = 2, Amount = 100m }],
+        });
+        await expenses.SaveAsync(new Expense { Date = new DateOnly(2026, 3, 11), Label = "Courses", Amount = 300m, CategoryId = 2 });
+
+        var o = await budget.GetOverviewAsync(new BudgetPeriod(2026, 3));
+        Assert.Equal(18m, o.Expenses.Single(l => l.Category.Id == 4).Spent);      // 60 − 42
+        Assert.Equal(200m, o.Expenses.Single(l => l.Category.Id == 2).Spent);     // 300 − 100
+        Assert.Equal(142m, o.Refunds);
+        Assert.Equal(218m, o.ActualExpenses);
+        Assert.Equal(2000m, o.ActualIncome);                                       // les remboursements ne sont pas des recettes
+        Assert.Equal(0m, o.UncategorizedIncome);
+        Assert.Equal(1782m, o.ActualBalance);                                     // = crédits − débits
+        Assert.Equal(218m, await expenses.GetMonthTotalAsync(2026, 3));
+
+        var monthly = await budget.GetMonthlyAsync(2026, CategoryKind.Income);
+        Assert.Equal(2000m, monthly.Sum(m => m.Total));
     }
 
     [Fact]
@@ -144,18 +172,21 @@ public sealed class IncomeTests : IDisposable
         var pay = rows.Single(r => r.Operation.Credit == 2100m);
         Assert.Equal(salaire.Id, pay.CategoryId);
         Assert.Equal("SALAIRE", pay.MatchedRule);
-        // Le remboursement carte vient d'un bénéficiaire dont le défaut est une catégorie de dépenses : ignoré.
+        // Le remboursement carte prend la catégorie de dépenses par défaut du bénéficiaire : il sera déduit.
         var refund = rows.Single(r => r.Operation.Credit == 10m);
-        Assert.NotEqual(2, refund.CategoryId);
-        Assert.False(refund.FromPayeeDefault);
+        Assert.Equal(2, refund.CategoryId);
+        Assert.True(refund.FromPayeeDefault);
+        // Aucune dépense ne reçoit la catégorie de recettes « Salaire ».
         Assert.All(rows.Where(r => !r.IsIncome && r.CategoryId is not null), r => Assert.Equal(2, r.CategoryId));
 
-        // Une catégorie qui ne correspond pas au sens de l'opération n'est pas enregistrée.
-        refund.CategoryId = 2;
+        // Une dépense ne garde pas une catégorie de recettes choisie par erreur.
+        var debit = rows.First(r => !r.IsIncome && !r.IsTransfer);
+        debit.CategoryId = salaire.Id;
         await service.ImportAsync(rows);
         using var check = factory.CreateDbContext();
         Assert.Equal(salaire.Id, check.Expenses.Single(e => e.Amount == 2100m).CategoryId);
-        Assert.Null(check.Expenses.Single(e => e.Amount == 10m && e.IsIncome).CategoryId);
+        Assert.Equal(2, check.Expenses.Single(e => e.Amount == 10m && e.IsIncome).CategoryId);
+        Assert.Null(check.Expenses.Single(e => e.ImportKey == debit.ImportKey).CategoryId);
     }
 
     [Fact]
@@ -174,5 +205,21 @@ public sealed class IncomeTests : IDisposable
         var d = new Expense { Date = new DateOnly(2026, 3, 2), Label = "Cotisation", Amount = 60m };
         await expenses.SaveAsync(d, "Mutuelle");
         Assert.Null(d.CategoryId);
+    }
+
+    [Fact]
+    public async Task Une_regle_ou_un_beneficiaire_classe_un_remboursement_en_depenses()
+    {
+        using (var db = factory.CreateDbContext())
+        {
+            db.Payees.Add(new Payee { Name = "MAAF SANTE", Key = "MAAF SANTE", DefaultCategoryId = 4 });   // Santé
+            db.SaveChanges();
+        }
+        var e = new Expense { Date = new DateOnly(2026, 3, 1), Label = "Remboursement", Amount = 30m, IsIncome = true };
+        await expenses.SaveAsync(e, "MAAF Santé");
+        Assert.Equal(4, e.CategoryId);
+
+        var lines = await budget.GetSummaryAsync(new BudgetPeriod(2026, 3));
+        Assert.Equal(-30m, lines.Single(l => l.Category.Id == 4).Spent);
     }
 }

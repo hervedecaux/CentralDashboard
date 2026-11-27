@@ -69,7 +69,7 @@ else
                         Catégorie
                         <InputSelect @bind-Value="model.CategoryId" disabled="@model.IsTransfer">
                             <option value="">Sans catégorie</option>
-                            <CategoryOptions Categories="categories" Kind="Kind" />
+                            <CategoryOptions Categories="categories" Kind="CategoryKind.Expense" Credit="model.IsIncome" />
                         </InputSelect>
                         @if (model.IsIncome && !categories.Any(c => c.IsIncome))
                         {
@@ -98,7 +98,7 @@ else
                         <div class="split-row">
                             <select value="@part.CategoryId" @onchange="e => part.CategoryId = int.TryParse(e.Value as string, out var c) ? c : null">
                                 <option value="">Sans catégorie</option>
-                                <CategoryOptions Categories="categories" Kind="Kind" />
+                                <CategoryOptions Categories="categories" Kind="CategoryKind.Expense" Credit="model.IsIncome" />
                             </select>
                             <input type="number" step="0.01" @bind="part.Amount" @bind:event="oninput" />
                             <button type="button" class="link small" title="Retirer" @onclick="() => parts.Remove(part)">✕</button>
@@ -172,16 +172,17 @@ else
     private bool splitting;
     private decimal Remaining => model!.Amount - parts.Sum(p => p.Amount);
 
-    private CategoryKind Kind => model?.IsIncome == true ? CategoryKind.Income : CategoryKind.Expense;
+    /// <summary>Une dépense ne prend qu'une catégorie de dépenses ; une recette prend aussi une catégorie de dépenses (remboursement).</summary>
+    private bool Accepts(int? categoryId) => categoryId is null || model?.IsIncome == true
+        || categories.FirstOrDefault(c => c.Id == categoryId)?.Kind == CategoryKind.Expense;
 
     /// <summary>Passe de dépense à recette (ou l'inverse) : les catégories de l'autre type sont retirées.</summary>
     private void SetIncome(bool income)
     {
         if (model is null || model.IsIncome == income) return;
         model.IsIncome = income;
-        bool Fits(int? id) => id is null || categories.FirstOrDefault(c => c.Id == id)?.Kind == Kind;
-        if (!Fits(model.CategoryId)) model.CategoryId = null;
-        foreach (var p in parts.Where(p => !Fits(p.CategoryId))) p.CategoryId = null;
+        if (!Accepts(model.CategoryId)) model.CategoryId = null;
+        foreach (var p in parts.Where(p => !Accepts(p.CategoryId))) p.CategoryId = null;
     }
 
     private void StartSplit()
@@ -251,7 +252,7 @@ else
             model.IsTransfer = true;
             payeeHint = "Transfert par défaut pour ce bénéficiaire.";
         }
-        else if (payee.DefaultCategoryId is { } cat && categories.FirstOrDefault(c => c.Id == cat)?.Kind == Kind)
+        else if (payee.DefaultCategoryId is { } cat && Accepts(cat))
         {
             model.CategoryId = cat;
             payeeHint = "Catégorie par défaut du bénéficiaire appliquée.";
