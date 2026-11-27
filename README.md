@@ -60,6 +60,8 @@ Ensuite, il suffit d'ouvrir http://localhost:5080 (pensez à le mettre en favori
 | Arrêter jusqu'à la prochaine session | `launchctl bootout gui/$(id -u)/local.dashboardperso` |
 | Journaux | `~/Library/Logs/DashboardPerso/` |
 
+**Sources NuGet :** le fichier `nuget.config` à la racine du dépôt limite la restauration à nuget.org et ignore les sources configurées globalement sur le Mac (par exemple le flux Telerik d'un autre projet). Sans lui, `dotnet publish` échoue avec « Impossible de charger l'index de service pour la source https://nuget.telerik.com/v3/index.json » si ce flux n'est pas authentifié.
+
 Vos données restent dans `~/Library/Application Support/DashboardPerso/` : installer, mettre à jour ou désinstaller n'y touche pas, et les migrations s'appliquent au redémarrage. Pendant que la version installée tourne, le port 5080 est occupé : arrêtez-la avant de lancer `dotnet run` pour développer.
 
 ## Où sont mes données ?
@@ -181,7 +183,7 @@ dotnet run                                            # la migration est appliqu
 
 Les services renvoient des `List<T>`, ce qui correspond directement au paramètre `Data` du `TelerikGrid`. Pour migrer une page :
 
-1. Ajouter le paquet `Telerik.UI.for.Blazor` (flux NuGet Telerik, licence requise) et suivre leur guide d'installation (`AddTelerikBlazor()`, `<TelerikRootComponent>` dans `MainLayout.razor`, CSS du thème).
+1. Ajouter le paquet `Telerik.UI.for.Blazor` (flux NuGet Telerik, licence requise), après avoir ajouté la source `https://nuget.telerik.com/v3/index.json` dans le `nuget.config` du dépôt (identifiants hors du dépôt), et suivre leur guide d'installation (`AddTelerikBlazor()`, `<TelerikRootComponent>` dans `MainLayout.razor`, CSS du thème).
 2. Remplacer le `<QuickGrid Items="...">` de la page par un `<TelerikGrid Data="@items">` avec ses `<GridColumn>`. Les services et les modèles ne changent pas.
 
 Chaque grille est signalée par un commentaire dans le code (`TelerikGrid`).
