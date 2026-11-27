@@ -220,3 +220,12 @@ input.search { min-width: 280px; }
 .task-actions { display: flex; gap: 0.6rem; align-items: center; white-space: nowrap; }
 .btn.small { padding: 0.25rem 0.6rem; font-size: 0.85rem; }
 .plan-picker { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+
+/* Catégories */
+.inline-edit { display: flex; gap: 0.4rem; align-items: center; }
+.inline-edit input { min-width: 220px; }
+.delete-row td { background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.delete-box { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.link.danger { color: var(--danger); }
+.categories td.indent { padding-left: 2.2rem !important; }
+.categories td button.link { font-size: 0.85rem; }

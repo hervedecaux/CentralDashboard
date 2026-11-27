@@ -129,6 +129,34 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
                 await db.CategoryRules.CountAsync(r => r.CategoryId == id));
     }
 
+    /// <summary>Utilisation de chaque catégorie : opérations (ventilations comprises), règles, bénéficiaires.</summary>
+    public async Task<Dictionary<int, (int Operations, int Rules, int Payees)>> GetAllUsageAsync()
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var direct = await db.Expenses.Where(e => e.CategoryId != null).GroupBy(e => e.CategoryId!.Value)
+            .Select(g => new { Id = g.Key, N = g.Count() }).ToListAsync();
+        var splits = await db.ExpenseSplits.Where(x => x.CategoryId != null).GroupBy(x => x.CategoryId!.Value)
+            .Select(g => new { Id = g.Key, N = g.Select(x => x.ExpenseId).Distinct().Count() }).ToListAsync();
+        var rules = await db.CategoryRules.Where(r => r.CategoryId != null).GroupBy(r => r.CategoryId!.Value)
+            .Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
+        var payees = await db.Payees.Where(p => p.DefaultCategoryId != null).GroupBy(p => p.DefaultCategoryId!.Value)
+            .Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N);
+        var ops = direct.Concat(splits).GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.Sum(x => x.N));
+        return (await db.BudgetCategories.Select(c => c.Id).ToListAsync())
+            .ToDictionary(id => id, id => (ops.GetValueOrDefault(id), rules.GetValueOrDefault(id), payees.GetValueOrDefault(id)));
+    }
+
+    /// <summary>Renomme une catégorie (sans toucher au reste).</summary>
+    public async Task RenameAsync(int id, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) throw new InvalidOperationException("Le nom est obligatoire.");
+        if (name.Length > 80) throw new InvalidOperationException("Le nom ne doit pas dépasser 80 caractères.");
+        await using var db = await dbFactory.CreateDbContextAsync();
+        if (await db.BudgetCategories.Where(c => c.Id == id).ExecuteUpdateAsync(x => x.SetProperty(c => c.Name, name)) == 0)
+            throw new InvalidOperationException("Catégorie introuvable.");
+    }
+
     public async Task SaveAsync(BudgetCategory category)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
@@ -208,6 +236,8 @@ public class BudgetService(IDbContextFactory<AppDbContext> dbFactory)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.CategoryId, reassignTo));
         await db.ExpenseSplits.Where(x => x.CategoryId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.CategoryId, reassignTo));
+        await db.Payees.Where(p => p.DefaultCategoryId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.DefaultCategoryId, reassignTo));
         if (reassignTo is null)
             await db.CategoryRules.Where(r => r.CategoryId == id).ExecuteDeleteAsync();
         else

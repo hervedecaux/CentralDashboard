@@ -64,6 +64,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Base de données :
 - **Budget annuel** : les montants saisis sont annuels. En vue « Mois », le prévu vaut budget annuel ÷ 12. En vue « Année », la colonne « Prévu à date » donne le budget au prorata des jours écoulés.
 - **Sous-catégories** (un seul niveau) : lien **+ sous-catégorie** sur une catégorie principale. Le budget et les dépenses d'une catégorie principale cumulent ceux de ses sous-catégories. Une part « non répartie » est possible (budget ou dépenses affectés directement à la catégorie principale).
 - **Dépenses et règles d'import** peuvent viser une catégorie principale ou une sous-catégorie. Filtrer les dépenses sur une catégorie principale inclut ses sous-catégories.
+- **Réglages › Catégories** (`/categories`) : toutes les catégories de dépenses et de recettes, avec leur utilisation. « Renommer » directement dans la liste, « Supprimer » avec réaffectation des opérations, règles et bénéficiaires à une catégorie du même type, « Modifier » pour le budget, la couleur et la catégorie parente.
 - **Supprimer une catégorie** : ses dépenses et ses règles peuvent être rattachées à une autre catégorie. Sinon, les dépenses restent sans catégorie et les règles sont supprimées. Une catégorie qui a des sous-catégories ne peut pas être supprimée tant qu'elle en a.
 
 ## Recettes
