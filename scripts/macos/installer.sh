@@ -39,6 +39,7 @@ mv "$TMP_DIR/app" "$APP_DIR"
 ok "Installée dans $APP_DIR"
 
 # 3. Lancement automatique à l'ouverture de session (LaunchAgent), toujours relancée si elle s'arrête.
+# ProcessType Interactive : avec Background, macOS bride le processeur et les disques et le démarrage peut prendre plusieurs minutes.
 cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -64,7 +65,7 @@ cat > "$PLIST" <<PLIST
     <key>ThrottleInterval</key>
     <integer>10</integer>
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Interactive</string>
     <key>StandardOutPath</key>
     <string>$LOG_DIR/dashboard.log</string>
     <key>StandardErrorPath</key>
