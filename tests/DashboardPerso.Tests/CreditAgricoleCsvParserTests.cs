@@ -7,10 +7,23 @@ public class CreditAgricoleCsvParserTests
     private readonly List<BankOperation> ops = CreditAgricoleCsvParser.Parse(CsvTestData.Sample());
 
     [Fact]
-    public void Lit_les_operations_du_compte_et_ignore_les_sections_cartes()
+    public void Lit_les_operations_du_compte_puis_celles_des_cartes()
     {
-        Assert.Equal(6, ops.Count);
-        Assert.DoesNotContain(ops, o => o.Description.Contains("SUPERMARCHE"));
+        Assert.Equal(7, ops.Count(o => !o.IsCardOperation));
+        var carte = ops.Where(o => o.IsCardOperation).ToList();
+        Assert.Equal(3, carte.Count);
+        Assert.All(carte, o => Assert.Equal("Carte ••5524 · Mme Claire Dupont", o.Source));
+        Assert.Equal("SUPERMARCHE EXEMPLE 25/02", carte[0].Description);
+        Assert.Equal(10m, carte.Single(o => !o.IsDebit).Credit);
+    }
+
+    [Fact]
+    public void Repere_le_debit_du_releve_carte_par_son_montant()
+    {
+        var releve = ops.Single(o => o.IsCardStatementTotal);
+        Assert.Equal(107.50m, releve.Debit);          // 45 + 72,50 - 10
+        Assert.False(releve.IsCardOperation);
+        Assert.Single(ops, o => o.IsCardStatementTotal);
     }
 
     [Fact]

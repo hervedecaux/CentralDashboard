@@ -43,7 +43,14 @@ else
 {
     <section class="cards">
         <div class="card stat"><span class="stat-label">Fichier</span><span>@fileName</span><span class="muted">@rows.Count opérations, du @rows.Min(r => r.Operation.Date).ToString("dd/MM/yyyy") au @rows.Max(r => r.Operation.Date).ToString("dd/MM/yyyy")</span></div>
-        <div class="card stat"><span class="stat-label">Nouvelles dépenses</span><span class="stat-value">@Count(ImportStatus.New)</span></div>
+        <div class="card stat">
+            <span class="stat-label">Nouvelles opérations</span>
+            <span class="stat-value">@Count(ImportStatus.New)</span>
+            @foreach (var g in rows.Where(r => r.Status == ImportStatus.New).GroupBy(r => r.Operation.Source))
+            {
+                <span class="muted small">@g.Key : @g.Count()</span>
+            }
+        </div>
         <div class="card stat"><span class="stat-label">Ignorées</span><span>@Count(ImportStatus.AlreadyImported) déjà importée(s)</span><span>@Count(ImportStatus.PossibleDuplicate) doublon(s) possible(s)</span><span>@Count(ImportStatus.Credit) crédit(s)</span></div>
     </section>
 
@@ -54,18 +61,33 @@ else
             <span class="muted">Les libellés contenant</span>
             <input @bind="ruleDraft.Pattern" @bind:event="oninput" />
             <span class="muted">vont dans</span>
-            <select @bind="ruleDraft.CategoryId">
+            <select @bind="ruleDraft.Target">
                 <option value="">Choisir…</option>
+                <option value="@TransferValue">Transfert (sans catégorie, hors budget)</option>
                 <CategoryOptions Categories="categories" />
             </select>
-            <button class="btn btn-primary" disabled="@(ruleDraft.CategoryId is null || string.IsNullOrWhiteSpace(ruleDraft.Pattern))" @onclick="SaveRule">Créer et appliquer</button>
+            <button class="btn btn-primary" disabled="@(ruleDraft.Target == "" || string.IsNullOrWhiteSpace(ruleDraft.Pattern))" @onclick="SaveRule">Créer et appliquer</button>
             <button class="btn btn-ghost" @onclick="() => ruleDraft = null">Annuler</button>
+        </div>
+    }
+
+    @if (sources.Count > 1)
+    {
+        <div class="segmented source-tabs">
+            <button class="@(sourceFilter == "" ? "active" : "")" @onclick='() => sourceFilter = ""'>Tout</button>
+            @foreach (var s in sources)
+            {
+                <button class="@(sourceFilter == s ? "active" : "")" @onclick="() => sourceFilter = s">@s</button>
+            }
         </div>
     }
 
     <div class="toolbar">
         <label class="inline"><input type="checkbox" @bind="showIgnored" /> Afficher les lignes ignorées</label>
-        <span class="muted">@Selected.Count() sélectionnée(s) · <strong>@Selected.Sum(r => r.Operation.Debit ?? 0).ToString("C")</strong></span>
+        <span class="muted">
+            @Selected.Count() sélectionnée(s) · dépenses <strong>@Selected.Where(r => !r.IsTransfer).Sum(r => r.Operation.Debit ?? 0).ToString("C")</strong>
+            @if (Selected.Any(r => r.IsTransfer)) { <span> · transferts @Selected.Where(r => r.IsTransfer).Sum(r => r.Operation.Debit ?? 0).ToString("C")</span> }
+        </span>
     </div>
 
     <div class="card table-card">
@@ -92,6 +114,8 @@ else
                             <input class="label-input" @bind="row.Label" title="@row.Operation.RawLabel" />
                             <div class="muted small">
                                 @row.Operation.Type
+                                @if (sourceFilter == "" && row.Operation.IsCardOperation) { <span class="badge">@row.Operation.Source</span> }
+                                @if (row.Operation.IsCardStatementTotal) { <span class="badge transfer" title="Total des paiements par carte, importés en détail depuis la section carte">Relevé carte</span> }
                                 @switch (row.Status)
                                 {
                                     case ImportStatus.AlreadyImported: <span class="badge">Déjà importée</span>; break;
@@ -107,8 +131,9 @@ else
                         <td>
                             @if (row.Operation.IsDebit)
                             {
-                                <select value="@row.CategoryId" @onchange="e => SetCategory(row, e.Value as string)">
+                                <select value="@(row.IsTransfer ? TransferValue : row.CategoryId?.ToString() ?? "")" @onchange="e => SetCategory(row, e.Value as string)">
                                     <option value="">Sans catégorie</option>
+                                    <option value="@TransferValue">Transfert (hors budget)</option>
                                     <CategoryOptions Categories="categories" />
                                 </select>
                                 @if (row.MatchedRule is not null)
@@ -148,12 +173,17 @@ else
     private class RuleDraft
     {
         public string Pattern { get; set; } = "";
-        public int? CategoryId { get; set; }
+        /// <summary>Id de catégorie, ou <see cref="TransferValue"/>.</summary>
+        public string Target { get; set; } = "";
     }
 
-    private IEnumerable<ImportRow> Visible => showIgnored
-        ? rows!
-        : rows!.Where(r => r.Status is ImportStatus.New or ImportStatus.PossibleDuplicate);
+    private const string TransferValue = "transfert";
+    private string sourceFilter = "";
+    private List<string> sources = [];
+
+    private IEnumerable<ImportRow> Visible => rows!
+        .Where(r => showIgnored || r.Status is ImportStatus.New or ImportStatus.PossibleDuplicate)
+        .Where(r => sourceFilter == "" || r.Operation.Source == sourceFilter);
 
     private IEnumerable<ImportRow> Selected => rows?.Where(r => r.Include && r.Operation.IsDebit) ?? [];
 
@@ -175,6 +205,9 @@ else
             await stream.CopyToAsync(ms);
             fileName = file.Name;
             rows = await Import.PreviewAsync(ms.ToArray());
+            sources = rows.Select(r => r.Operation.Source).Distinct()
+                .OrderBy(s => s != BankOperation.AccountSource).ThenBy(s => s).ToList();
+            sourceFilter = "";
             if (rows.Count == 0)
             {
                 rows = null;
@@ -194,6 +227,7 @@ else
 
     private void SetCategory(ImportRow row, string? value)
     {
+        row.IsTransfer = value == TransferValue;
         row.CategoryId = int.TryParse(value, out var id) ? id : null;
         row.CategoryChosenByUser = true;
         row.MatchedRule = null;
@@ -203,7 +237,7 @@ else
     {
         // Proposition : début du bénéficiaire, à raccourcir au besoin (ex. « ORANGE SA »).
         Pattern = SuggestPattern(row.Operation.Description),
-        CategoryId = row.CategoryId,
+        Target = row.IsTransfer ? TransferValue : row.CategoryId?.ToString() ?? "",
     };
 
     /// <summary>« ORANGE SA-ORANGE - Orange - Votre abonnement… » → « ORANGE SA-ORANGE ».</summary>
@@ -215,7 +249,8 @@ else
 
     private async Task SaveRule()
     {
-        await Rules.AddAsync(ruleDraft!.Pattern, ruleDraft.CategoryId!.Value);
+        var transfer = ruleDraft!.Target == TransferValue;
+        await Rules.AddAsync(ruleDraft.Pattern, transfer ? null : int.Parse(ruleDraft.Target), transfer);
         ruleDraft = null;
         await Import.ApplyRulesAsync(rows!);
     }

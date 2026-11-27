@@ -38,12 +38,25 @@ else
                 <ValidationMessage For="() => model.Label" />
             </label>
 
-            <label>
-                Catégorie
-                <InputSelect @bind-Value="model.CategoryId">
-                    <option value="">Sans catégorie</option>
-                    <CategoryOptions Categories="categories" />
-                </InputSelect>
+            <div class="form-row">
+                <label>
+                    Catégorie
+                    <InputSelect @bind-Value="model.CategoryId" disabled="@model.IsTransfer">
+                        <option value="">Sans catégorie</option>
+                        <CategoryOptions Categories="categories" />
+                    </InputSelect>
+                </label>
+                <label>
+                    Provenance
+                    <InputSelect @bind-Value="model.Source">
+                        @foreach (var s in sources) { <option value="@s">@s</option> }
+                    </InputSelect>
+                </label>
+            </div>
+
+            <label class="inline">
+                <InputCheckbox @bind-Value="model.IsTransfer" />
+                Transfert (relevé de carte, virement vers un compte de crédit…) : sans catégorie, hors budget
             </label>
 
             <label>
@@ -69,11 +82,13 @@ else
     private bool IsNew => Id is null;
     private Expense? model;
     private List<BudgetCategory> categories = [];
+    private List<string> sources = [];
     private bool notFound;
 
     protected override async Task OnParametersSetAsync()
     {
         categories = await Budget.GetCategoriesAsync();
+        sources = await Expenses.GetSourcesAsync();
         model = IsNew ? new Expense() : await Expenses.GetAsync(Id!.Value);
         notFound = model is null;
     }

@@ -34,6 +34,8 @@ public sealed class BudgetServiceTests : IDisposable
             new Expense { Date = new DateOnly(2026, 3, 20), Label = "Lavage", Amount = 10, CategoryId = auto },
             new Expense { Date = new DateOnly(2026, 5, 1), Label = "Assurance", Amount = 50, CategoryId = assurance });
         db.CategoryRules.Add(new CategoryRule { Pattern = "TOTAL", CategoryId = carburant });
+        // Un transfert, même catégorisé par erreur, ne compte pas dans le budget.
+        db.Expenses.Add(new Expense { Date = new DateOnly(2026, 3, 1), Label = "Relevé carte", Amount = 999, CategoryId = carburant, IsTransfer = true });
         db.SaveChanges();
     }
 

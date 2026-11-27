@@ -89,7 +89,10 @@ namespace DashboardPerso.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("CategoryId")
+                    b.Property<int?>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("MarkAsTransfer")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Pattern")
@@ -123,6 +126,9 @@ namespace DashboardPerso.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsTransfer")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -131,6 +137,13 @@ namespace DashboardPerso.Data.Migrations
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Compte");
 
                     b.HasKey("Id");
 
@@ -195,8 +208,7 @@ namespace DashboardPerso.Data.Migrations
                     b.HasOne("DashboardPerso.Models.BudgetCategory", "Category")
                         .WithMany()
                         .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Category");
                 });

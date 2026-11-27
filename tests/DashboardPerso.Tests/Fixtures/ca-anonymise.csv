@@ -47,14 +47,36 @@ GAB VILLE CENTRE 10/03 12H00
 
 
 ";126,40;;
+01/03/2026;"Opération carte
+CARTE X5524 FEVRIER 2026
+
+
+
+";107,50;;
 
 
 
  DUPONT CLAIRE - Titulaire;
 MME CLAIRE DUPONT - Porteur;
- carte n° 000000******0000
+ carte n° 000000******5524
+
 
 Date d'opération;Libellé;Débit euros;Crédit euros;
-08/03/2026;"Paiement par carte
-SUPERMARCHE EXEMPLE 07/03
+26/02/2026;"Paiement par carte
+SUPERMARCHE EXEMPLE 25/02
 ";45,00;;
+20/02/2026;"Paiement par carte
+STATION SERVICE EXEMPLE 19/02
+";72,50;;
+18/02/2026;"Remboursement carte
+BOUTIQUE EXEMPLE 17/02
+";;10,00;
+
+
+
+M.       DUPONT PAUL - Titulaire;
+MR PAUL DUPONT - Porteur;
+ carte n° 000000******1900
+
+
+;Pas d'opérations carte prélevées sur la période demandée;

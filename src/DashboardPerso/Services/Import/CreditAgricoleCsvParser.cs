@@ -9,7 +9,9 @@ namespace DashboardPerso.Services.Import;
 /// encodage Windows-1252, séparateur « ; », une vingtaine de lignes d'en-tête,
 /// puis « Date d'opération;Libellé;Débit euros;Crédit euros; ».
 /// Le libellé est un champ multi-lignes (type d'opération, puis bénéficiaire, puis références).
-/// Les sections « cartes » qui suivent la liste du compte sont ignorées.
+/// Les sections « cartes » qui suivent la liste du compte (cartes à débit différé) sont lues aussi :
+/// chaque opération porte la carte d'origine, et la ligne du compte qui débite le total
+/// de la carte est repérée comme un transfert.
 /// </summary>
 public static partial class CreditAgricoleCsvParser
 {
@@ -48,11 +50,27 @@ public static partial class CreditAgricoleCsvParser
                 "Ce fichier ne semble pas être un export Crédit Agricole.");
 
         var operations = new List<BankOperation>();
+        string source = BankOperation.AccountSource;
+        string? holder = null;
+        var cardSums = new Dictionary<string, decimal>();
+
         foreach (var row in rows.Skip(header + 1))
         {
             if (row.All(string.IsNullOrWhiteSpace)) continue;          // ligne vide
-            if (!DateOnly.TryParseExact(row[0].Trim(), "dd/MM/yyyy", French, DateTimeStyles.None, out var date))
-                break;                                                   // fin de la liste du compte (sections cartes)
+            var first = row[0].Trim();
+
+            if (!DateOnly.TryParseExact(first, "dd/MM/yyyy", French, DateTimeStyles.None, out var date))
+            {
+                // Sections cartes : « … - Porteur », puis « carte n° 513780******5524 », puis les opérations.
+                if (first.EndsWith("- Porteur", StringComparison.OrdinalIgnoreCase))
+                    holder = TitleCase(first[..first.LastIndexOf('-')].Trim());
+                else if (CardNumber().Match(string.Join(' ', row)) is { Success: true } m)
+                {
+                    source = $"Carte ••{m.Groups[1].Value}" + (holder is null ? "" : $" · {holder}");
+                    holder = null;
+                }
+                continue;                                                // en-têtes, titulaires, « Pas d'opérations… »
+            }
             if (row.Count < 4) continue;
 
             var lines = row[1].Split('\n')
@@ -60,7 +78,7 @@ public static partial class CreditAgricoleCsvParser
                 .Where(l => l.Length > 0)
                 .ToList();
 
-            operations.Add(new BankOperation
+            var op = new BankOperation
             {
                 Date = date,
                 Type = lines.ElementAtOrDefault(0) ?? "",
@@ -68,10 +86,34 @@ public static partial class CreditAgricoleCsvParser
                 RawLabel = string.Join(" | ", lines),
                 Debit = ParseAmount(row[2]),
                 Credit = ParseAmount(row[3]),
-            });
+                Source = source,
+            };
+            operations.Add(op);
+            if (op.IsCardOperation)
+                cardSums[source] = cardSums.GetValueOrDefault(source) + (op.Debit ?? 0) - (op.Credit ?? 0);
         }
-        return operations;
+
+        return operations.Select(op => IsCardStatementTotal(op, cardSums.Values)
+            ? op with { IsCardStatementTotal = true }
+            : op).ToList();
     }
+
+    /// <summary>
+    /// Débit du compte correspondant au total d'une carte à débit différé :
+    /// libellé mentionnant une carte, et montant égal au total d'une section carte du fichier
+    /// (ou libellé explicite de relevé différé).
+    /// </summary>
+    private static bool IsCardStatementTotal(BankOperation op, IEnumerable<decimal> cardTotals)
+    {
+        if (op.IsCardOperation || !op.IsDebit) return false;
+        var label = TextNormalizer.Normalize(op.RawLabel);
+        if (!label.Contains("CARTE")) return false;
+        return cardTotals.Any(t => Math.Abs(t - op.Debit!.Value) < 0.01m)
+            || label.Contains("RELEVE") || label.Contains("DIFFERE") || label.Contains("TOTAL");
+    }
+
+    private static string TitleCase(string value) =>
+        French.TextInfo.ToTitleCase(Spaces().Replace(value, " ").ToLower(French));
 
     /// <summary>« 1 386,53 » → 1386.53 ; vide → null.</summary>
     public static decimal? ParseAmount(string value)
@@ -80,6 +122,9 @@ public static partial class CreditAgricoleCsvParser
         if (cleaned.Length == 0) return null;
         return decimal.Parse(cleaned, NumberStyles.Number, French);
     }
+
+    [GeneratedRegex(@"carte\s+n\S*\s+\S*(\d{4})\b", RegexOptions.IgnoreCase)]
+    private static partial Regex CardNumber();
 
     // Espaces normales, insécables et fines insécables.
     [GeneratedRegex(@"[\s  ]+")]
