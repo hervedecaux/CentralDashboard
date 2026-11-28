@@ -2,12 +2,58 @@
 @using DashboardPerso.Services.Import
 @inject ImportService Import
 @inject AccountService Accounts
+@inject BackupService Backups
 
 <PageTitle>Données · Dashboard perso</PageTitle>
 
 <header class="page-header">
     <h1>Données</h1>
 </header>
+
+<div class="data-layout">
+<div class="card form-card backup-card">
+    <h2>Sauvegarder la base</h2>
+    <p class="muted">
+        Toutes vos données (opérations, budgets, tâches, planning, réglages) sont dans un seul fichier.
+        La copie est faite proprement même pendant que l'application tourne.
+    </p>
+    <div class="form-actions">
+        <button class="btn btn-primary" disabled="@backupBusy" @onclick="Backup">@(backupBusy ? "Sauvegarde…" : "Sauvegarder maintenant")</button>
+        <a class="btn btn-ghost" href="donnees/telecharger" download data-enhance-nav="false">Télécharger une copie</a>
+    </div>
+    @if (backupMessage is not null) { <p class="positive">@backupMessage</p> }
+    @if (backupError is not null) { <p class="negative">@backupError</p> }
+
+    <p class="muted small">
+        Les sauvegardes sont enregistrées dans <code>@Backups.BackupDirectory</code>.
+        Pour restaurer : arrêter l'application, remplacer <code>@System.IO.Path.GetFileName(Backups.DatabasePath)</code>
+        (dans le dossier parent) par la sauvegarde renommée, puis relancer.
+    </p>
+
+    @if (backups.Count > 0)
+    {
+        <ul class="list backup-list">
+            @foreach (var b in backups.Take(showAllBackups ? backups.Count : 5))
+            {
+                <li @key="b.FileName">
+                    <span>
+                        <a href="donnees/sauvegardes/@Uri.EscapeDataString(b.FileName)" download data-enhance-nav="false">@b.CreatedAt.ToString("'Le' dddd d MMMM yyyy 'à' HH:mm")</a>
+                        <span class="small muted">· @FormatSize(b.Size)</span>
+                    </span>
+                    <DeleteButton OnConfirm="() => DeleteBackup(b)" />
+                </li>
+            }
+        </ul>
+        @if (backups.Count > 5 && !showAllBackups)
+        {
+            <button class="link left" @onclick="() => showAllBackups = true">Voir les @backups.Count sauvegardes</button>
+        }
+    }
+    else
+    {
+        <p class="muted small">Aucune sauvegarde pour l'instant.</p>
+    }
+</div>
 
 <div class="card form-card danger-zone">
     <h2>Effacer les opérations importées</h2>
@@ -67,6 +113,7 @@
     }
     @if (message is not null) { <p class="positive">@message</p> }
 </div>
+</div>
 
 @code {
     private List<Account> accounts = [];
@@ -77,6 +124,9 @@
     private string confirmation = "";
     private string? message;
     private bool busy;
+    private List<BackupInfo> backups = [];
+    private bool backupBusy, showAllBackups;
+    private string? backupMessage, backupError;
 
     private ImportedFilter Filter => new(accountId, from, to);
 
@@ -86,8 +136,39 @@
     protected override async Task OnInitializedAsync()
     {
         accounts = await Accounts.GetAllAsync();
+        backups = Backups.List();
         await Refresh();
     }
+
+    private async Task Backup()
+    {
+        backupBusy = true;
+        backupMessage = backupError = null;
+        try
+        {
+            var b = await Backups.CreateAsync();
+            backupMessage = $"Sauvegarde enregistrée : {b.FileName} ({FormatSize(b.Size)}).";
+        }
+        catch (Exception ex)
+        {
+            backupError = $"La sauvegarde a échoué : {ex.Message}";
+        }
+        finally
+        {
+            backups = Backups.List();
+            backupBusy = false;
+        }
+    }
+
+    private void DeleteBackup(BackupInfo b)
+    {
+        Backups.Delete(b.FileName);
+        backupMessage = null;
+        backups = Backups.List();
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:0.0} Mo" : $"{Math.Max(1, bytes / 1024)} Ko";
 
     private static DateOnly? ParseDate(object? value) =>
         DateOnly.TryParse(value as string, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;

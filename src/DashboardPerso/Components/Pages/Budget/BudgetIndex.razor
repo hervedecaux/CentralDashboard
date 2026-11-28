@@ -246,6 +246,9 @@ else
     private DateOnly month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private bool yearView;
     private BudgetOverview? overview;
+
+    /// <summary>« ?vue=annee » ouvre directement la vue annuelle (lien depuis l'accueil).</summary>
+    [SupplyParameterFromQuery(Name = "vue")] public string? ViewQuery { get; set; }
     private List<MonthlyLine>? monthly;
 
     private BudgetPeriod Period => new(month.Year, yearView ? null : month.Month);
@@ -320,7 +323,11 @@ else
     private decimal PlannedToDate(decimal annual) =>
         Math.Round(annual * Period.ElapsedFraction(DateOnly.FromDateTime(DateTime.Today)), 2);
 
-    protected override Task OnInitializedAsync() => Load();
+    protected override Task OnInitializedAsync()
+    {
+        yearView = ViewQuery == "annee";
+        return Load();
+    }
 
     private async Task SetView(bool year)
     {

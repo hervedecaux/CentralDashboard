@@ -130,6 +130,15 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Environnement : �
 
 **Réglages › Données** (`/donnees`) efface les opérations venues d'un relevé, pour toutes les opérations ou pour un compte / une carte et/ou une période. Un aperçu indique le nombre et les montants concernés, et il faut taper « EFFACER » pour confirmer. Catégories, budgets, règles, bénéficiaires, comptes, solde initial et saisies manuelles sont conservés. Les opérations effacées peuvent ensuite être réimportées.
 
+### Sauvegarder la base
+
+**Réglages › Données** permet aussi de sauvegarder la base SQLite :
+
+- **Sauvegarder maintenant** enregistre une copie horodatée (ex. `dashboard-2026-11-28_073012.db`) dans le dossier `Sauvegardes`, à côté de la base (`~/Library/Application Support/DashboardPerso/Sauvegardes` pour la version installée). La liste des sauvegardes permet de les télécharger ou de les supprimer.
+- **Télécharger une copie** télécharge directement une copie de la base via le navigateur (pour la ranger sur un disque externe, iCloud…).
+
+La copie est faite avec `VACUUM INTO` : le fichier est cohérent même si l'application tourne. Pour restaurer : arrêter l'application, remplacer `dashboard.db` par la sauvegarde (renommée en `dashboard.db`), puis la relancer.
+
 ## Importer un relevé bancaire (Crédit Agricole)
 
 1. Sur le site du Crédit Agricole, téléchargez la liste des opérations du compte au format **CSV**.
