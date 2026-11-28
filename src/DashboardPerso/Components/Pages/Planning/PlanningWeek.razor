@@ -1,6 +1,8 @@
 @page "/planning"
 @inject ActivityService Activities
 @inject TaskService Tasks
+@inject DashboardPerso.Services.Google.GoogleCalendarService Google
+@using DashboardPerso.Services.Google
 
 <PageTitle>Planning · Dashboard perso</PageTitle>
 
@@ -49,6 +51,7 @@
 
 @if (message is not null) { <p class="positive">@message</p> }
 @if (error is not null) { <p class="negative">@error</p> }
+@if (googleError is not null) { <p class="negative small">Google Agenda : @googleError</p> }
 
 @if (items is null || categories is null)
 {
@@ -73,6 +76,30 @@ else
             {
                 <span>Commencez par définir votre <a href="planning/semaine-type">semaine type</a> (travail, travaux, ménage, loisirs…), puis appliquez-la à chaque semaine.</span>
             }
+        </div>
+    }
+
+    @if (selectedEvent is { } ev)
+    {
+        <div class="card google-event" style="--c:@ev.Color">
+            <div class="card-header">
+                <h2>@ev.Title</h2>
+                <button type="button" class="btn btn-ghost small" @onclick="() => selectedEvent = null">Fermer</button>
+            </div>
+            <div class="google-meta">
+                <span>
+                    @ev.Date.ToString("dddd d MMMM yyyy")
+                    @if (ev.Start is { } st && ev.End is { } en) { <span> · @st.ToString("HH:mm")–@en.ToString("HH:mm")</span> }
+                    else { <span class="muted"> · journée entière</span> }
+                </span>
+                <span class="muted small"><span class="dot" style="background:@ev.Color"></span>Google Agenda · @ev.CalendarName</span>
+                @if (!string.IsNullOrWhiteSpace(ev.Location)) { <span>📍 @ev.Location</span> }
+                @if (!string.IsNullOrWhiteSpace(ev.Description)) { <span class="google-desc small">@ev.Description</span> }
+                <span class="form-actions">
+                    @if (ev.Link is not null) { <a class="btn btn-ghost small" href="@ev.Link" target="_blank" rel="noopener">Ouvrir dans Google Agenda</a> }
+                    @if (TaskId(ev) is { } taskId) { <a class="btn btn-ghost small" href="taches/@taskId">Voir la tâche</a> }
+                </span>
+            </div>
         </div>
     }
 
@@ -119,6 +146,24 @@ else
                 </label>
                 <label class="inline"><input type="checkbox" @bind="editing.Done" /> Fait</label>
 
+                @if (googleConnected && editing.Id != 0)
+                {
+                    var exported = IsExported(editing.Id);
+                    <div class="google-export">
+                        <span class="small @(exported ? "positive" : "muted")">
+                            @(exported ? "Dans Google Agenda : mise à jour à l'enregistrement." : "Pas dans Google Agenda.")
+                        </span>
+                        <span class="spacer"></span>
+                        <button type="button" class="btn btn-ghost small" disabled="@googleBusy" @onclick="ExportEditing">
+                            @(exported ? "Mettre à jour maintenant" : "Exporter vers Google Agenda")
+                        </button>
+                        @if (exported)
+                        {
+                            <button type="button" class="btn btn-ghost small danger" disabled="@googleBusy" @onclick="RemoveEditingExport">Retirer de Google Agenda</button>
+                        }
+                    </div>
+                }
+
                 @if (relatedTasks.Count > 0)
                 {
                     <div class="related-tasks">
@@ -160,7 +205,7 @@ else
     }
 
     <div class="card table-card">
-        <WeekGrid Items="gridItems" Headers="headers" HighlightDay="highlight"
+        <WeekGrid Items="gridItems" AllDay="allDayItems" Headers="headers" HighlightDay="highlight"
                   OnSelect="Select" OnAdd="Add" OnToggle="Toggle" />
     </div>
 
@@ -200,6 +245,12 @@ else
     private List<PlannedActivity>? items;
     private List<ActivityCategory>? categories;
     private List<WeekGrid.Item> gridItems = [];
+    private List<WeekGrid.AllDayItem> allDayItems = [];
+    private bool googleConnected, googleBusy;
+    private CalendarWeek googleWeek = new([], []);
+    private List<CalendarEntry> googleShown = [];
+    private CalendarEntry? selectedEvent;
+    private string? googleError;
     private List<ActivityTotal> totals = [];
     private List<ActivityTotal> templateTotals = [];
     private List<TaskItem> relatedTasks = [];
@@ -224,7 +275,121 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (DateOnly.TryParse(WeekQuery, out var d)) monday = ActivityService.MondayOf(d);
+        googleConnected = Google.IsConnected;
         await Load();
+        await LoadGoogle();
+    }
+
+    /// <summary>Événements Google Agenda de la semaine (sans bloquer l'affichage du planning en cas d'erreur).</summary>
+    private async Task LoadGoogle()
+    {
+        googleConnected = Google.IsConnected;
+        googleError = null;
+        if (!googleConnected)
+        {
+            googleWeek = new CalendarWeek([], []);
+        }
+        else
+        {
+            try
+            {
+                googleWeek = await Google.GetEntriesAsync(monday, monday.AddDays(7));
+                googleError = googleWeek.Error;
+            }
+            catch (GoogleNotConnectedException ex)
+            {
+                googleConnected = false;
+                googleWeek = new CalendarWeek([], []);
+                googleError = ex.Message;
+            }
+        }
+        BuildGrid();
+    }
+
+    private bool IsExported(int activityId) => googleWeek.ExportedKeys.Contains(GoogleCalendarService.ActivityKey(activityId));
+
+    private static int? TaskId(CalendarEntry e) =>
+        e.LocalKey is { } k && k.StartsWith("task:") && int.TryParse(k[5..], out var id) ? id : null;
+
+    /// <summary>Activités locales + événements Google (ids négatifs). Une activité exportée n'est affichée qu'une fois.</summary>
+    private void BuildGrid()
+    {
+        if (items is null) return;
+        var localKeys = items.Select(a => GoogleCalendarService.ActivityKey(a.Id)).ToHashSet();
+        googleShown = googleWeek.Entries.Where(e => e.LocalKey is null || !localKeys.Contains(e.LocalKey)).ToList();
+        gridItems = items.Select(a => new WeekGrid.Item(a.Id, a.Date.DayNumber - monday.DayNumber, a.Start, a.End,
+            a.Category!.Color, a.Title ?? a.Category.Name, a.Title is null ? a.Category.Parent?.Name : a.Category.Name, a.Done,
+            Marker: IsExported(a.Id) ? "G" : null)).ToList();
+        for (var i = 0; i < googleShown.Count; i++)
+        {
+            var e = googleShown[i];
+            if (e.Start is { } st && e.End is { } en)
+                gridItems.Add(new WeekGrid.Item(-(i + 1), e.Date.DayNumber - monday.DayNumber, st, en, e.Color, e.Title,
+                    e.CalendarName, External: true));
+        }
+        allDayItems = googleShown.Select((e, i) => (e, i)).Where(x => x.e.AllDay)
+            .Select(x => new WeekGrid.AllDayItem(-(x.i + 1), x.e.Date.DayNumber - monday.DayNumber, x.e.Color,
+                (TaskId(x.e) is not null ? "☐ " : "") + x.e.Title))
+            .ToList();
+    }
+
+    private async Task RunGoogle(Func<Task> action)
+    {
+        googleBusy = true;
+        error = null;
+        try
+        {
+            await action();
+        }
+        catch (GoogleNotConnectedException ex)
+        {
+            googleConnected = false;
+            error = ex.Message;
+        }
+        catch (Exception ex) when (ex is GoogleApiException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            googleBusy = false;
+        }
+    }
+
+    private async Task ExportEditing()
+    {
+        if (editing is null) return;
+        var a = editing;
+        await RunGoogle(async () =>
+        {
+            // Enregistre d'abord les modifications en cours, pour exporter ce qui est affiché.
+            await Activities.SaveActivityAsync(a);
+            await Google.ExportActivityAsync(a, CategoryName(a.CategoryId));
+            message = "Activité envoyée dans Google Agenda.";
+            editing = null;
+            await Load();
+            await LoadGoogle();
+        });
+    }
+
+    private async Task RemoveEditingExport()
+    {
+        if (editing is null) return;
+        var id = editing.Id;
+        await RunGoogle(async () =>
+        {
+            await Google.RemoveExportAsync(GoogleCalendarService.ActivityKey(id));
+            message = "Activité retirée de Google Agenda.";
+            await LoadGoogle();
+        });
+    }
+
+    /// <summary>Après une modification locale, met à jour l'événement Google s'il a été exporté.</summary>
+    private async Task SyncExport(PlannedActivity a)
+    {
+        if (!googleConnected || !IsExported(a.Id)) return;
+        await RunGoogle(() => Google.RefreshExportAsync(GoogleCalendarService.ActivityKey(a.Id),
+            GoogleCalendarService.BuildActivityEvent(a, CategoryName(a.CategoryId), TimeZoneInfo.Local)));
     }
 
     private async Task Load()
@@ -235,8 +400,7 @@ else
         slotCount = slots.Count;
         headers = Enumerable.Range(0, 7).Select(i => monday.AddDays(i).ToString("ddd d/MM")).ToArray();
         highlight = Today >= monday && Today < monday.AddDays(7) ? Today.DayNumber - monday.DayNumber : -1;
-        gridItems = items.Select(a => new WeekGrid.Item(a.Id, a.Date.DayNumber - monday.DayNumber, a.Start, a.End,
-            a.Category!.Color, a.Title ?? a.Category.Name, a.Title is null ? a.Category.Parent?.Name : a.Category.Name, a.Done)).ToList();
+        BuildGrid();
         totals = ActivityService.Totals(items.Select(a => (a.Category!, a.Start, a.End, a.Done)), categories);
         templateTotals = ActivityService.Totals(slots.Select(s => (s.Category!, s.Start, s.End, false)), categories);
     }
@@ -256,9 +420,12 @@ else
     private async Task Reset()
     {
         editing = null;
+        selectedEvent = null;
         confirmClear = false;
         message = error = null;
+        googleWeek = new CalendarWeek([], []);
         await Load();
+        await LoadGoogle();
     }
 
     private async Task Apply()
@@ -271,15 +438,32 @@ else
 
     private async Task Clear()
     {
+        var exported = items?.Where(a => IsExported(a.Id)).Select(a => a.Id).ToList() ?? [];
         var n = await Activities.ClearWeekAsync(monday);
         confirmClear = false;
         editing = null;
         message = $"{n} activité(s) supprimée(s).";
+        if (exported.Count > 0)
+        {
+            await RunGoogle(async () =>
+            {
+                foreach (var id in exported) await Google.RemoveExportAsync(GoogleCalendarService.ActivityKey(id));
+                message += $" {exported.Count} retirée(s) de Google Agenda.";
+            });
+        }
         await Load();
+        await LoadGoogle();
     }
 
     private async Task Select(int id)
     {
+        if (id < 0)
+        {
+            editing = null;
+            selectedEvent = googleShown.ElementAtOrDefault(-id - 1);
+            return;
+        }
+        selectedEvent = null;
         var a = items!.First(x => x.Id == id);
         message = error = null;
         editing = new PlannedActivity
@@ -294,6 +478,7 @@ else
     {
         if (categories is not { Count: > 0 }) return;
         message = error = null;
+        selectedEvent = null;
         var end = at.Time.Hour >= 23 ? new TimeOnly(23, 59) : at.Time.AddHours(1);
         editing = new PlannedActivity
         {
@@ -332,9 +517,11 @@ else
         error = null;
         try
         {
-            await Activities.SaveActivityAsync(editing!);
+            var saved = editing!;
+            await Activities.SaveActivityAsync(saved);
             message = "Activité enregistrée.";
             editing = null;
+            await SyncExport(saved);
             await Load();
         }
         catch (InvalidOperationException ex)
@@ -351,16 +538,28 @@ else
 
     private async Task Delete()
     {
-        await Activities.DeleteActivityAsync(editing!.Id);
+        var id = editing!.Id;
+        var exported = IsExported(id);
+        await Activities.DeleteActivityAsync(id);
         editing = null;
         message = "Activité supprimée.";
+        if (exported)
+        {
+            await RunGoogle(async () =>
+            {
+                await Google.RemoveExportAsync(GoogleCalendarService.ActivityKey(id));
+                message += " Elle a aussi été retirée de Google Agenda.";
+            });
+        }
         await Load();
+        if (exported) await LoadGoogle();
     }
 
     private async Task Toggle((int Id, bool Done) e)
     {
         await Activities.SetDoneAsync(e.Id, e.Done);
         await Load();
+        if (items?.FirstOrDefault(a => a.Id == e.Id) is { } a) await SyncExport(a);
     }
 
     private string CategoryColor(int id) => categories?.FirstOrDefault(c => c.Id == id)?.Color ?? "#4f6bed";

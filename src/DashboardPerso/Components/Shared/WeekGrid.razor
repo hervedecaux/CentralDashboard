@@ -15,6 +15,22 @@
             </div>
         }
 
+        @if (AllDay.Count > 0)
+        {
+            <div class="wg-allday-label" title="Journée entière">jour</div>
+            @for (var d = 0; d < 7; d++)
+            {
+                var day = d;
+                <div class="wg-allday @(day == HighlightDay ? "today" : "")">
+                    @foreach (var a in AllDay.Where(a => a.DayIndex == day))
+                    {
+                        <button type="button" class="wg-chip" style="--c:@a.Color" title="@a.Label" @key="a.Id"
+                                @onclick="() => OnSelect.InvokeAsync(a.Id)">@a.Label</button>
+                    }
+                </div>
+            }
+        }
+
         <div class="wg-hours">
             @for (var h = firstHour; h < lastHour; h++)
             {
@@ -30,17 +46,18 @@
                 @foreach (var p in Layout(day))
                 {
                     var item = p.Item;
-                    <div class="wg-item @(item.Done ? "done" : "")" @key="item.Id"
+                    <div class="wg-item @(item.Done ? "done" : "") @(item.External ? "external" : "")" @key="item.Id"
                          style="top:@Px(Minutes(item.Start)); height:@Px(Math.Max(Minutes(item.End) - Minutes(item.Start), 20)); left:calc(@(p.Left)% + 2px); width:calc(@(p.Width)% - 4px); --c:@item.Color"
                          title="@($"{item.Start:HH\\:mm}–{item.End:HH\\:mm} · {item.Label}{(item.Sub is null ? "" : " · " + item.Sub)}")"
                          @onclick="() => OnSelect.InvokeAsync(item.Id)" @onclick:stopPropagation>
                         <div class="wg-item-head">
-                            @if (OnToggle.HasDelegate)
+                            @if (OnToggle.HasDelegate && !item.External)
                             {
                                 <input type="checkbox" checked="@item.Done" title="Fait"
                                        @onclick:stopPropagation @onchange="e => OnToggle.InvokeAsync((item.Id, (bool)e.Value!))" />
                             }
                             <strong>@item.Label</strong>
+                            @if (item.Marker is not null) { <span class="wg-marker" title="Exportée vers Google Agenda">@item.Marker</span> }
                         </div>
                         <span class="wg-time">@item.Start.ToString("HH:mm")–@item.End.ToString("HH:mm")</span>
                         @if (item.Sub is not null) { <span class="wg-sub">@item.Sub</span> }
@@ -52,10 +69,19 @@
 </div>
 
 @code {
-    /// <summary>Élément à afficher : DayIndex 0 = lundi.</summary>
-    public record Item(int Id, int DayIndex, TimeOnly Start, TimeOnly End, string Color, string Label, string? Sub = null, bool Done = false);
+    /// <summary>
+    /// Élément à afficher : DayIndex 0 = lundi. External : événement d'un autre agenda (Google), sans case « fait ».
+    /// Marker : petit repère après le titre (ex. « G » pour une activité exportée).
+    /// </summary>
+    public record Item(int Id, int DayIndex, TimeOnly Start, TimeOnly End, string Color, string Label, string? Sub = null, bool Done = false,
+        bool External = false, string? Marker = null);
+
+    /// <summary>Événement « journée entière », affiché sous l'en-tête du jour.</summary>
+    public record AllDayItem(int Id, int DayIndex, string Color, string Label);
 
     [Parameter, EditorRequired] public List<Item> Items { get; set; } = [];
+
+    [Parameter] public List<AllDayItem> AllDay { get; set; } = [];
 
     /// <summary>Libellés des 7 colonnes (« Lun. », « lun. 24/11 »…).</summary>
     [Parameter, EditorRequired] public string[] Headers { get; set; } = [];

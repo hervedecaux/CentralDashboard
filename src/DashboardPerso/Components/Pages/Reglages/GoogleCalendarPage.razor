@@ -1,0 +1,276 @@
+@page "/google-agenda"
+@using DashboardPerso.Services.Google
+@inject GoogleSettingsStore Store
+@inject GoogleAuth Auth
+@inject GoogleCalendarService Calendar
+@inject NavigationManager Nav
+
+<PageTitle>Google Agenda · Dashboard perso</PageTitle>
+
+<header class="page-header">
+    <div>
+        <h1>Google Agenda</h1>
+        <p class="muted">Affichez vos événements Google dans le planning, et envoyez-y les tâches ou activités de votre choix.</p>
+    </div>
+</header>
+
+@if (Connected == "1") { <p class="positive">Connexion à Google Agenda réussie.</p> }
+@if (QueryError is not null) { <p class="negative">@QueryError</p> }
+@if (message is not null) { <p class="positive">@message</p> }
+@if (error is not null) { <p class="negative">@error</p> }
+
+<div class="google-layout">
+    <div class="card form-card">
+        <div class="card-header">
+            <h2>1. Identifiants Google Cloud</h2>
+            @if (settings.HasCredentials) { <span class="badge income">Renseignés</span> }
+        </div>
+        <p class="muted small">
+            Créés une seule fois dans votre propre projet Google Cloud (client OAuth de type « Application de bureau ») :
+            voir le guide pas à pas dans le README, section « Google Agenda ».
+        </p>
+        <form @onsubmit="SaveCredentials" @onsubmit:preventDefault>
+            <label>
+                Fichier JSON téléchargé depuis Google Cloud (client_secret_….json)
+                <InputFile OnChange="LoadFile" accept=".json,application/json" />
+            </label>
+            <span class="muted small">ou saisissez les deux valeurs :</span>
+            <label>
+                ID client
+                <input @bind="clientId" placeholder="123456-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false" />
+            </label>
+            <label>
+                Secret client
+                <input type="password" @bind="clientSecret" autocomplete="off"
+                       placeholder="@(settings.HasCredentials ? "•••••••• (inchangé si vide)" : "GOCSPX-…")" />
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(clientId)">Enregistrer</button>
+            </div>
+        </form>
+        <p class="muted small">
+            Enregistrés sur ce Mac uniquement, dans <code>@Store.FilePath</code> (lisible par vous seul),
+            jamais dans le dépôt ni dans les sauvegardes de la base.
+        </p>
+    </div>
+
+    <div class="card form-card">
+        <div class="card-header">
+            <h2>2. Connexion</h2>
+            @if (settings.IsConnected) { <span class="badge income">Connecté</span> }
+        </div>
+        @if (!settings.HasCredentials)
+        {
+            <p class="muted">Renseignez d'abord les identifiants.</p>
+        }
+        else if (!settings.IsConnected)
+        {
+            <p>Google va vous demander de choisir votre compte et d'autoriser l'accès à vos agendas.</p>
+            <p class="muted small">
+                Si Google affiche « Google n'a pas validé cette application », c'est normal : c'est votre propre application.
+                Cliquez sur « Paramètres avancés » puis « Accéder à … (non sécurisé) ».
+            </p>
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="Connect">Se connecter à Google</button>
+            </div>
+        }
+        else
+        {
+            <p>
+                Connecté@(settings.AccountEmail is { } email ? $" au compte {email}" : "")
+                @if (settings.ConnectedAt is { } at) { <span class="muted small"> depuis le @at.ToString("d MMMM yyyy")</span> }
+            </p>
+            <div class="form-actions">
+                <button class="btn btn-ghost" @onclick="Connect">Se reconnecter</button>
+                <span class="spacer"></span>
+                @if (confirmDisconnect)
+                {
+                    <span class="confirm">
+                        Se déconnecter ? (les événements déjà exportés restent dans Google Agenda)
+                        <button class="btn btn-danger" @onclick="Disconnect">Oui</button>
+                        <button class="btn btn-ghost" @onclick="() => confirmDisconnect = false">Non</button>
+                    </span>
+                }
+                else
+                {
+                    <button class="btn btn-ghost danger" @onclick="() => confirmDisconnect = true">Se déconnecter</button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (settings.IsConnected)
+    {
+        <div class="card google-calendars">
+            <div class="card-header">
+                <h2>3. Agendas</h2>
+                <button class="btn btn-ghost small" @onclick="LoadCalendars" disabled="@loading">Actualiser</button>
+            </div>
+            @if (calendars is null)
+            {
+                <p class="muted">@(loading ? "Chargement des agendas…" : "")</p>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr><th>Agenda</th><th>Afficher dans le planning</th><th>Exporter vers</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in calendars)
+                        {
+                            <tr @key="c.Id">
+                                <td><span class="dot" style="background:@(c.BackgroundColor ?? "#4285f4")"></span>@c.Name
+                                    @if (c.Primary) { <span class="badge">principal</span> }</td>
+                                <td><input type="checkbox" checked="@IsShown(c)" @onchange="e => ToggleShown(c, (bool)e.Value!)" /></td>
+                                <td>
+                                    @if (c.CanWrite)
+                                    {
+                                        <input type="radio" name="export-calendar" checked="@IsExport(c)" @onchange="() => SetExport(c)" />
+                                    }
+                                    else
+                                    {
+                                        <span class="muted small">lecture seule</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <p class="muted small">
+                    Les tâches sont exportées comme événements « journée entière » le jour prévu (ou à l'échéance),
+                    les activités du planning avec leurs horaires. Un élément déjà exporté est mis à jour quand vous le modifiez ici.
+                </p>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "connecte")] public string? Connected { get; set; }
+    [SupplyParameterFromQuery(Name = "erreur")] public string? QueryError { get; set; }
+
+    private GoogleSettings settings = new();
+    private string? clientId, clientSecret;
+    private List<GoogleCalendarListEntry>? calendars;
+    private bool loading, confirmDisconnect;
+    private string? message, error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = Store.Load();
+        clientId = settings.ClientId;
+        if (settings.IsConnected) await LoadCalendars();
+    }
+
+    private async Task LoadFile(InputFileChangeEventArgs e)
+    {
+        message = error = null;
+        try
+        {
+            using var reader = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 64 * 1024));
+            var parsed = GoogleSettingsStore.ParseClientSecretFile(await reader.ReadToEndAsync());
+            if (parsed is null)
+            {
+                error = "Ce fichier ne contient pas d'identifiants OAuth Google (client_id / client_secret).";
+                return;
+            }
+            (clientId, clientSecret) = parsed.Value;
+            SaveCredentials();
+        }
+        catch (IOException ex)
+        {
+            error = $"Lecture du fichier impossible : {ex.Message}";
+        }
+    }
+
+    private void SaveCredentials()
+    {
+        message = error = null;
+        var id = clientId?.Trim() ?? "";
+        var secret = string.IsNullOrWhiteSpace(clientSecret) ? settings.ClientSecret : clientSecret.Trim();
+        if (!id.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal))
+        {
+            error = "L'ID client doit se terminer par « .apps.googleusercontent.com ».";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            error = "Le secret client est obligatoire.";
+            return;
+        }
+        var changed = id != settings.ClientId || secret != settings.ClientSecret;
+        settings = Store.Update(s =>
+        {
+            s.ClientId = id;
+            s.ClientSecret = secret;
+            if (changed) s.RefreshToken = null;   // nouveau client : il faut se reconnecter
+        });
+        if (changed) Auth.Reset();
+        clientSecret = null;
+        message = changed && !settings.IsConnected ? "Identifiants enregistrés. Connectez-vous maintenant à Google." : "Identifiants enregistrés.";
+    }
+
+    private void Connect() => Nav.NavigateTo("google/connexion", forceLoad: true);
+
+    private async Task Disconnect()
+    {
+        confirmDisconnect = false;
+        await Auth.DisconnectAsync();
+        settings = Store.Load();
+        calendars = null;
+        message = "Déconnecté de Google Agenda.";
+    }
+
+    private async Task LoadCalendars()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            calendars = (await Calendar.GetCalendarsAsync())
+                .OrderByDescending(c => c.Primary).ThenBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            // Noms et couleurs à jour dans les réglages.
+            settings = Store.Update(s =>
+            {
+                s.AccountEmail ??= calendars.FirstOrDefault(c => c.Primary)?.Id;
+                foreach (var shown in s.ShownCalendars)
+                    if (calendars.FirstOrDefault(c => c.Id == shown.Id) is { } c)
+                        (shown.Name, shown.Color) = (c.Name, c.BackgroundColor ?? shown.Color);
+            });
+        }
+        catch (GoogleNotConnectedException ex)
+        {
+            error = ex.Message;
+            settings = Store.Load();
+        }
+        catch (GoogleApiException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private bool IsShown(GoogleCalendarListEntry c) => settings.ShownCalendars.Any(s => s.Id == c.Id);
+
+    private bool IsExport(GoogleCalendarListEntry c) =>
+        settings.ExportCalendarId == c.Id || (settings.ExportCalendarId == "primary" && c.Primary);
+
+    private void ToggleShown(GoogleCalendarListEntry c, bool shown)
+    {
+        settings = Store.Update(s =>
+        {
+            s.ShownCalendars.RemoveAll(x => x.Id == c.Id);
+            if (shown) s.ShownCalendars.Add(new GoogleCalendarChoice { Id = c.Id, Name = c.Name, Color = c.BackgroundColor ?? "#4285f4" });
+        });
+    }
+
+    private void SetExport(GoogleCalendarListEntry c)
+    {
+        settings = Store.Update(s => s.ExportCalendarId = c.Primary ? "primary" : c.Id);
+        message = $"Les exports iront dans « {c.Name} ». Les événements déjà exportés restent dans leur agenda d'origine.";
+    }
+}
