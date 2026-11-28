@@ -1,15 +1,18 @@
-@* Solde théorique du compte courant comparé au solde indiqué par la banque. *@
+@* Solde théorique de chaque compte bancaire comparé au solde indiqué par la banque. *@
 @inject AccountService Accounts
 
-<div class="card stat">
-    <span class="stat-label">Solde théorique</span>
-    @if (balance is null)
-    {
+@if (shown.Count == 0)
+{
+    <div class="card stat">
+        <span class="stat-label">Solde théorique</span>
         <span class="muted">Saisissez un solde initial dans <a href="comptes">Comptes et cartes</a>.</span>
-    }
-    else
-    {
-        <span class="stat-value @(balance.Theoretical < 0 ? "negative" : "")">@balance.Theoretical.ToString("C")</span>
+    </div>
+}
+@foreach (var (account, balance) in shown)
+{
+    <div class="card stat" @key="account.Id">
+        <span class="stat-label">@(shown.Count == 1 ? "Solde théorique" : $"Solde · {account.Label}")</span>
+        <span class="stat-value @(balance!.Theoretical < 0 ? "negative" : "")">@balance.Theoretical.ToString("C")</span>
         @if (balance.Difference is { } diff)
         {
             <span class="@(diff == 0 ? "positive" : "negative") small">
@@ -21,11 +24,12 @@
         {
             <span class="muted small">depuis @balance.InitialBalance.ToString("C") le @balance.InitialDate.ToString("dd/MM/yyyy")</span>
         }
-    }
-</div>
+    </div>
+}
 
 @code {
-    private AccountBalance? balance;
+    private List<AccountBalanceSummary> shown = [];
 
-    protected override async Task OnInitializedAsync() => balance = await Accounts.GetBalanceAsync();
+    protected override async Task OnInitializedAsync() =>
+        shown = (await Accounts.GetBankBalancesAsync()).Where(b => b.Balance is not null).ToList();
 }

@@ -50,4 +50,4 @@ public record BankOperation
 }
 
 /// <summary>Relevé lu : opérations et solde du compte indiqué par la banque.</summary>
-public record BankStatement(List<BankOperation> Operations, decimal? Balance, DateOnly? BalanceDate);
+public record BankStatement(List<BankOperation> Operations, decimal? Balance, DateOnly? BalanceDate, string? AccountNumber = null);

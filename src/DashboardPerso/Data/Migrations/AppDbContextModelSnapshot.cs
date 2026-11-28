@@ -23,6 +23,10 @@ namespace DashboardPerso.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AccountNumber")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
                     b.Property<double?>("BankBalance")
                         .HasColumnType("REAL");
 
@@ -48,6 +52,9 @@ namespace DashboardPerso.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountNumber")
+                        .IsUnique();
 
                     b.HasIndex("ImportId")
                         .IsUnique();

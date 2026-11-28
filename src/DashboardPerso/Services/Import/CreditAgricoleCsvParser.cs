@@ -29,12 +29,26 @@ public static partial class CreditAgricoleCsvParser
     {
         var text = Decode(content);
         var operations = ParseText(text);
+        var number = ParseAccountNumber(text);
         var m = BalanceLine().Match(text);
         return m.Success
             ? new BankStatement(operations,
                 ParseAmount(m.Groups[2].Value),
-                DateOnly.ParseExact(m.Groups[1].Value, "dd/MM/yyyy", French))
-            : new BankStatement(operations, null, null);
+                DateOnly.ParseExact(m.Groups[1].Value, "dd/MM/yyyy", French),
+                number)
+            : new BankStatement(operations, null, null, number);
+    }
+
+    /// <summary>
+    /// Numéro du compte indiqué en tête du relevé (« Compte de Dépôt carte n° 12345678901 »), avant la liste
+    /// des opérations ; null s'il est absent. Les numéros de carte (masqués, « 513780******5524 ») sont ignorés.
+    /// </summary>
+    public static string? ParseAccountNumber(string text)
+    {
+        var start = text.IndexOf("Date d", StringComparison.OrdinalIgnoreCase);
+        var head = start >= 0 ? text[..start] : text;
+        var m = AccountNumberLine().Match(head);
+        return m.Success ? Spaces().Replace(m.Groups[1].Value, "") : null;
     }
 
     /// <summary>UTF-8 si le fichier en est valide, sinon Windows-1252 (format habituel de la banque).</summary>
@@ -141,6 +155,10 @@ public static partial class CreditAgricoleCsvParser
     // « Solde au 27/11/2026 3 235,79 € » (montant éventuellement négatif).
     [GeneratedRegex(@"Solde au (\d{2}/\d{2}/\d{4})\s+(-?[\d\s\u00A0\u202F]+,\d{2})")]
     private static partial Regex BalanceLine();
+
+    // « Compte de Dépôt carte n° 12345678901 », « Livret A n° 12345678901 » (chiffres uniquement, au moins 5).
+    [GeneratedRegex(@"\bn\s?[°ºo]\.?\s*(\d[\d ]{3,}\d)\b", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex AccountNumberLine();
 
     [GeneratedRegex(@"carte\s+n\S*\s+\S*(\d{4})\b", RegexOptions.IgnoreCase)]
     private static partial Regex CardNumber();
