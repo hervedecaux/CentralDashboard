@@ -56,17 +56,28 @@ else
         </div>
     </section>
 
-    <section class="grid-2">
+    <section class="home-grid">
         <div class="card">
             <div class="card-header">
-                <h2>Budget du mois</h2>
-                <a href="budget">Gérer</a>
+                <h2>@(budgetYear ? $"Budget {DateTime.Today.Year}" : "Budget du mois")</h2>
+                <span class="actions">
+                    <span class="segmented small-seg">
+                        <button class="@(budgetYear ? "" : "active")" @onclick="() => budgetYear = false">Mois</button>
+                        <button class="@(budgetYear ? "active" : "")" @onclick="() => budgetYear = true">Année</button>
+                    </span>
+                    <a href="@(budgetYear ? "budget?vue=annee" : "budget")">Gérer</a>
+                </span>
             </div>
-            @if (lines.Count == 0)
+            @{ var shown = budgetYear ? yearLines! : lines; }
+            @if (shown.Count == 0)
             {
                 <p class="muted">Aucune catégorie. <a href="budget/nouveau">Créer une catégorie</a></p>
             }
-            @foreach (var line in lines)
+            else if (budgetYear)
+            {
+                <p class="muted small">Dépensé / budget annuel · prévu à date : @ytdPlanned.ToString("C")</p>
+            }
+            @foreach (var line in shown)
             {
                 <div class="budget-line">
                     <div class="budget-line-head">
@@ -126,99 +137,102 @@ else
                 </ul>
             }
         </div>
-    </section>
 
-    <section class="card">
-        <div class="card-header">
-            <h2>Au programme aujourd'hui</h2>
-            <a href="planning">Planning de la semaine</a>
-        </div>
-        @if (activities!.Count == 0)
-        {
-            <p class="muted">
-                Aucune activité prévue aujourd'hui.
-                @if (slotCount > 0 && weekIsEmpty)
-                {
-                    <button class="link" @onclick="ApplyWeek">Appliquer la semaine type à cette semaine</button>
-                }
-                else if (slotCount == 0)
-                {
-                    <a href="planning/semaine-type">Définir ma semaine type</a>
-                }
-            </p>
-        }
-        <ul class="list task-list day-activities">
-            @foreach (var a in activities)
+        <section class="card">
+            <div class="card-header">
+                <h2>Au programme aujourd'hui</h2>
+                <a href="planning">Planning de la semaine</a>
+            </div>
+            @if (activities!.Count == 0)
             {
-                var related = activityTasks.GetValueOrDefault(a.Id) ?? [];
-                <li @key="a.Id">
-                    <div class="activity-line">
-                        <span class="task-main">
-                            <input type="checkbox" checked="@a.Done" title="Fait" @onchange="e => ToggleActivity(a, (bool)e.Value!)" />
-                            <span class="muted activity-time">@a.Start.ToString("HH:mm")–@a.End.ToString("HH:mm")</span>
-                            <span class="dot" style="background:@a.Category!.Color"></span>
-                            <span class="@(a.Done ? "done" : "")">@(a.Title ?? a.Category.Name)</span>
-                            @if (a.Title is not null) { <span class="small muted">@a.Category.Name</span> }
+                <p class="muted">
+                    Aucune activité prévue aujourd'hui.
+                    @if (slotCount > 0 && weekIsEmpty)
+                    {
+                        <button class="link" @onclick="ApplyWeek">Appliquer la semaine type à cette semaine</button>
+                    }
+                    else if (slotCount == 0)
+                    {
+                        <a href="planning/semaine-type">Définir ma semaine type</a>
+                    }
+                </p>
+            }
+            <ul class="list task-list day-activities">
+                @foreach (var a in activities)
+                {
+                    var related = activityTasks.GetValueOrDefault(a.Id) ?? [];
+                    <li @key="a.Id">
+                        <div class="activity-line">
+                            <span class="task-main">
+                                <input type="checkbox" checked="@a.Done" title="Fait" @onchange="e => ToggleActivity(a, (bool)e.Value!)" />
+                                <span class="muted activity-time">@a.Start.ToString("HH:mm")–@a.End.ToString("HH:mm")</span>
+                                <span class="dot" style="background:@a.Category!.Color"></span>
+                                <span class="@(a.Done ? "done" : "")">@(a.Title ?? a.Category.Name)</span>
+                                @if (a.Title is not null) { <span class="small muted">@a.Category.Name</span> }
+                            </span>
+                            @if (related.Count > 0)
+                            {
+                                <ul class="activity-tasks">
+                                    @foreach (var t in related)
+                                    {
+                                        <li @key="t.Id">
+                                            <a href="taches/@t.Id">@t.Title</a>
+                                            @if (t.PlannedFor is { } p && p <= today)
+                                            {
+                                                <span class="small positive">dans les tâches du jour</span>
+                                            }
+                                            else
+                                            {
+                                                <button class="link small" @onclick="() => PlanToday(t)">+ Aujourd'hui</button>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <h2>Dernières dépenses</h2>
+                <a href="depenses/nouvelle">+ Ajouter</a>
+            </div>
+            @if (latest!.Count == 0)
+            {
+                <p class="muted">Aucune dépense enregistrée.</p>
+            }
+            <ul class="list">
+                @foreach (var e in latest)
+                {
+                    <li>
+                        <span>
+                            <span class="muted">@e.Date.ToString("dd/MM")</span>
+                            <a href="depenses/@e.Id">@e.Label</a>
+                            @if (e.IsTransfer)
+                            {
+                                <span class="badge transfer">Transfert</span>
+                            }
+                            else if (e.Category is not null)
+                            {
+                                <CategoryBadge Category="e.Category" />
+                            }
                         </span>
-                        @if (related.Count > 0)
-                        {
-                            <ul class="activity-tasks">
-                                @foreach (var t in related)
-                                {
-                                    <li @key="t.Id">
-                                        <a href="taches/@t.Id">@t.Title</a>
-                                        @if (t.PlannedFor is { } p && p <= today)
-                                        {
-                                            <span class="small positive">dans les tâches du jour</span>
-                                        }
-                                        else
-                                        {
-                                            <button class="link small" @onclick="() => PlanToday(t)">+ Aujourd'hui</button>
-                                        }
-                                    </li>
-                                }
-                            </ul>
-                        }
-                    </div>
-                </li>
-            }
-        </ul>
-    </section>
-
-    <section class="card">
-        <div class="card-header">
-            <h2>Dernières dépenses</h2>
-            <a href="depenses/nouvelle">+ Ajouter</a>
-        </div>
-        @if (latest!.Count == 0)
-        {
-            <p class="muted">Aucune dépense enregistrée.</p>
-        }
-        <ul class="list">
-            @foreach (var e in latest)
-            {
-                <li>
-                    <span>
-                        <span class="muted">@e.Date.ToString("dd/MM")</span>
-                        <a href="depenses/@e.Id">@e.Label</a>
-                        @if (e.IsTransfer)
-                        {
-                            <span class="badge transfer">Transfert</span>
-                        }
-                        else if (e.Category is not null)
-                        {
-                            <CategoryBadge Category="e.Category" />
-                        }
-                    </span>
-                    <span class="amount @(e.IsIncome ? "positive" : "")">@(e.IsIncome ? "+" : "")@e.Amount.ToString("C")</span>
-                </li>
-            }
-        </ul>
+                        <span class="amount @(e.IsIncome ? "positive" : "")">@(e.IsIncome ? "+" : "")@e.Amount.ToString("C")</span>
+                    </li>
+                }
+            </ul>
+        </section>
     </section>
 }
 
 @code {
     private List<BudgetLine>? lines;
+    private List<BudgetLine>? yearLines;
+    /// <summary>Suivi du budget affiché sur l'année par défaut (bascule possible sur le mois).</summary>
+    private bool budgetYear = true;
     private List<TaskItem>? upcoming;
     private List<TaskItem>? dayTasks;
     private int tomorrowCount;
@@ -241,7 +255,7 @@ else
         income = month.ActualIncome;
         plannedIncome = month.PlannedIncome;
 
-        var year = await Budget.GetSummaryAsync(new BudgetPeriod(today.Year, null));
+        var year = yearLines = await Budget.GetSummaryAsync(new BudgetPeriod(today.Year, null));
         ytdSpent = year.Sum(l => l.Spent);
         ytdPlanned = Math.Round(year.Sum(l => l.AnnualBudget) * new BudgetPeriod(today.Year, null).ElapsedFraction(DateOnly.FromDateTime(today)), 2);
 

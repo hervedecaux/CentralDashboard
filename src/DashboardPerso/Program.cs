@@ -44,6 +44,8 @@ builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<PayeeService>();
 builder.Services.AddScoped<OperationListState>();
+builder.Services.AddSingleton(new DatabaseFile(dbPath));
+builder.Services.AddScoped<BackupService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -74,6 +76,19 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+
+// Sauvegarde de la base (page Données) : copie cohérente téléchargée, ou sauvegarde déjà enregistrée.
+const string SqliteMime = "application/vnd.sqlite3";
+app.MapGet("/donnees/telecharger", async (BackupService backups) =>
+{
+    var path = await backups.CreateTemporaryCopyAsync();
+    // Le fichier temporaire est supprimé une fois l'envoi terminé.
+    var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
+        bufferSize: 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+    return Results.File(stream, SqliteMime, backups.NewFileName(DateTime.Now));
+});
+app.MapGet("/donnees/sauvegardes/{fileName}", (string fileName, BackupService backups) =>
+    backups.Find(fileName) is { } path ? Results.File(path, SqliteMime, fileName) : Results.NotFound());
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
