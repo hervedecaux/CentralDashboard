@@ -2,6 +2,7 @@ using System.Globalization;
 using DashboardPerso.Components;
 using DashboardPerso.Data;
 using DashboardPerso.Services;
+using DashboardPerso.Services.Google;
 using DashboardPerso.Services.Import;
 using Microsoft.EntityFrameworkCore;
 
@@ -47,6 +48,15 @@ builder.Services.AddScoped<OperationListState>();
 builder.Services.AddSingleton(new DatabaseFile(dbPath));
 builder.Services.AddScoped<BackupService>();
 
+// Google Agenda : identifiants et jeton dans un fichier à part, à côté de la base (jamais dans le dépôt).
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(new GoogleSettingsStore(
+    Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, GoogleSettingsStore.FileName)));
+builder.Services.AddSingleton<GoogleAuth>();
+builder.Services.AddSingleton<GoogleCalendarApi>();
+builder.Services.AddScoped<GoogleCalendarService>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -89,6 +99,36 @@ app.MapGet("/donnees/telecharger", async (BackupService backups) =>
 });
 app.MapGet("/donnees/sauvegardes/{fileName}", (string fileName, BackupService backups) =>
     backups.Find(fileName) is { } path ? Results.File(path, SqliteMime, fileName) : Results.NotFound());
+// Connexion à Google Agenda : redirection vers Google, puis retour avec le code d'autorisation.
+app.MapGet("/google/connexion", (HttpContext http, GoogleAuth auth) =>
+{
+    try
+    {
+        return Results.Redirect(auth.BuildAuthorizeUrl($"{http.Request.Scheme}://{http.Request.Host}{http.Request.PathBase}/"));
+    }
+    catch (GoogleNotConnectedException ex)
+    {
+        return Results.Redirect("/google-agenda?erreur=" + Uri.EscapeDataString(ex.Message));
+    }
+});
+app.MapGet(GoogleAuth.CallbackPath, async (string? state, string? code, string? error,
+    GoogleAuth auth, GoogleCalendarService calendar, ILogger<GoogleAuth> log) =>
+{
+    if (error is not null)
+        return Results.Redirect("/google-agenda?erreur=" + Uri.EscapeDataString(
+            error == "access_denied" ? "Connexion annulée (accès refusé sur la page Google)." : $"Google a renvoyé l'erreur « {error} »."));
+    try
+    {
+        await auth.CompleteAsync(state, code);
+        await calendar.InitializeAfterConnectAsync();
+        return Results.Redirect("/google-agenda?connecte=1");
+    }
+    catch (Exception ex) when (ex is GoogleApiException or GoogleNotConnectedException)
+    {
+        log.LogWarning("Connexion Google refusée : {Message}", ex.Message);
+        return Results.Redirect("/google-agenda?erreur=" + Uri.EscapeDataString(ex.Message));
+    }
+});
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

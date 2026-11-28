@@ -10,3 +10,6 @@ obj/
 # Relevés bancaires réels : ne jamais les versionner (seul le fichier fictif des tests l'est)
 *.csv
 !tests/**/Fixtures/*.csv
+# Identifiants Google (OAuth) : jamais dans le dépôt
+google-agenda.json
+client_secret*.json

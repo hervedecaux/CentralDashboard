@@ -3,6 +3,8 @@
 @inject TaskService Tasks
 @inject ActivityService Activities
 @inject NavigationManager Nav
+@inject GoogleCalendarService Google
+@using DashboardPerso.Services.Google
 
 <PageTitle>@(IsNew ? "Nouvelle tâche" : "Modifier la tâche") · Dashboard perso</PageTitle>
 
@@ -96,6 +98,48 @@ else
             }
         </EditForm>
     </div>
+
+    @if (googleConnected && !IsNew)
+    {
+        <div class="card form-card">
+            <div class="card-header">
+                <h2>Google Agenda</h2>
+                @if (export is not null) { <span class="badge income">Exportée</span> }
+            </div>
+            @if (googleError is not null) { <p class="negative">@googleError</p> }
+            @if (googleMessage is not null) { <p class="positive">@googleMessage</p> }
+            @if (!googleChecked)
+            {
+                <p class="muted">Vérification…</p>
+            }
+            else
+            {
+                <p class="muted small">
+                    @if (GoogleCalendarService.TaskDate(model) is { } day)
+                    {
+                        <span>Événement « journée entière » le @day.ToString("dddd d MMMM yyyy") (@(model.PlannedFor is not null ? "jour prévu" : "échéance")).</span>
+                    }
+                    else
+                    {
+                        <span>Choisissez un jour (« Prévue pour ») ou une échéance pour pouvoir l'exporter.</span>
+                    }
+                    @if (export is not null) { <span> Elle est mise à jour dans Google Agenda à chaque enregistrement.</span> }
+                </p>
+                <div class="form-actions">
+                    <button class="btn btn-ghost" disabled="@(googleBusy || GoogleCalendarService.TaskDate(model) is null)" @onclick="ExportTask">
+                        @(export is null ? "Exporter vers Google Agenda" : "Mettre à jour maintenant")
+                    </button>
+                    @if (export is not null)
+                    {
+                        @if (export.Link is not null) { <a class="btn btn-ghost" href="@export.Link" target="_blank" rel="noopener">Ouvrir</a> }
+                        <span class="spacer"></span>
+                        <button class="btn btn-ghost danger" disabled="@googleBusy" @onclick="RemoveExport">Retirer de Google Agenda</button>
+                    }
+                </div>
+                <p class="muted small">L'enregistrement ci-dessus est fait d'abord, pour exporter ce qui est affiché.</p>
+            }
+        </div>
+    }
 }
 
 @code {
@@ -106,22 +150,99 @@ else
     private TaskItem? model;
     private bool notFound;
     private List<ActivityCategory> activityCategories = [];
+    private bool googleConnected, googleChecked, googleBusy;
+    private ExportedEvent? export;
+    private string? googleError, googleMessage;
 
     protected override async Task OnParametersSetAsync()
     {
         activityCategories = await Activities.GetCategoriesAsync();
         model = IsNew ? new TaskItem() : await Tasks.GetAsync(Id!.Value);
         notFound = model is null;
+        googleConnected = Google.IsConnected && model is not null && !IsNew;
+        googleChecked = false;
+        export = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Vérifie après le premier affichage : la page s'affiche sans attendre Google.
+        if (!googleConnected || googleChecked || googleBusy) return;
+        await RunGoogle(async () => export = await Google.FindExportAsync(GoogleCalendarService.TaskKey(Id!.Value)));
+        googleChecked = true;
+        StateHasChanged();
+    }
+
+    private async Task<bool> RunGoogle(Func<Task> action)
+    {
+        googleBusy = true;
+        googleError = googleMessage = null;
+        try
+        {
+            await action();
+            return true;
+        }
+        catch (GoogleNotConnectedException ex)
+        {
+            googleConnected = false;
+            googleError = ex.Message;
+        }
+        catch (Exception ex) when (ex is GoogleApiException or InvalidOperationException)
+        {
+            googleError = ex.Message;
+        }
+        finally
+        {
+            googleBusy = false;
+        }
+        return false;
+    }
+
+    private async Task ExportTask()
+    {
+        if (string.IsNullOrWhiteSpace(model!.Title))
+        {
+            googleError = "Le titre est obligatoire.";
+            return;
+        }
+        await Tasks.SaveAsync(model);
+        await RunGoogle(async () =>
+        {
+            var wasExported = export is not null;
+            export = await Google.ExportTaskAsync(model!);
+            googleMessage = wasExported ? "Événement mis à jour dans Google Agenda." : "Tâche enregistrée et ajoutée à Google Agenda.";
+        });
+    }
+
+    private async Task RemoveExport()
+    {
+        await RunGoogle(async () =>
+        {
+            await Google.RemoveExportAsync(GoogleCalendarService.TaskKey(Id!.Value));
+            export = null;
+            googleMessage = "Tâche retirée de Google Agenda.";
+        });
     }
 
     private async Task Save()
     {
         await Tasks.SaveAsync(model!);
+        if (export is not null)
+        {
+            // Garde l'événement Google à jour (ou le retire si la tâche n'a plus de date) ;
+            // en cas d'échec, on reste sur la page pour afficher l'erreur.
+            var ok = GoogleCalendarService.TaskDate(model!) is not null
+                ? await RunGoogle(() => Google.ExportTaskAsync(model!))
+                : await RunGoogle(() => Google.RemoveExportAsync(GoogleCalendarService.TaskKey(Id!.Value)));
+            if (!ok) return;
+        }
         Nav.NavigateTo("taches");
     }
 
     private async Task Delete()
     {
+        if (export is not null)
+            await RunGoogle(() => Google.RemoveExportAsync(GoogleCalendarService.TaskKey(Id!.Value)));
         await Tasks.DeleteAsync(Id!.Value);
         Nav.NavigateTo("taches");
     }

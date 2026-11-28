@@ -263,6 +263,24 @@ input.search { min-width: 280px; }
 .wg-item-head strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wg-item input[type=checkbox] { width: 13px; height: 13px; margin: 0; flex-shrink: 0; }
 .wg-time, .wg-sub { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-item.external { background: color-mix(in srgb, var(--c) 10%, var(--surface)); border-left-style: dashed; }
+.wg-item.external:hover { background: color-mix(in srgb, var(--c) 20%, var(--surface)); }
+.wg-marker { font-size: 0.65rem; font-weight: 700; color: #4285f4; border: 1px solid currentColor; border-radius: 3px; padding: 0 2px; line-height: 1.2; flex-shrink: 0; }
+.wg-allday-label { font-size: 0.7rem; color: var(--muted); text-align: right; padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--border); }
+.wg-allday { display: flex; flex-direction: column; gap: 2px; padding: 3px; border-left: 1px solid var(--border); border-bottom: 1px solid var(--border); min-width: 0; }
+.wg-allday.today { background-color: color-mix(in srgb, var(--primary) 5%, transparent); }
+.wg-chip {
+    font: inherit; font-size: 0.75rem; text-align: left; border: none; border-left: 3px solid var(--c); border-radius: 4px; padding: 1px 5px; cursor: pointer;
+    background: color-mix(in srgb, var(--c) 16%, var(--surface)); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.google-event { border-left: 4px dashed var(--c, #4285f4); max-width: 760px; }
+.google-event .google-meta { display: flex; flex-direction: column; gap: 0.3rem; }
+.google-event .google-desc { white-space: pre-line; }
+.google-export { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; border: 1px dashed var(--border); border-radius: 8px; padding: 0.6rem 0.8rem; }
+.google-today-title { margin: 0.8rem 0 0.2rem; font-weight: 600; }
+.google-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; align-items: start; }
+.google-layout .form-card { max-width: none; }
+.google-layout .google-calendars { grid-column: 1 / -1; }
 .activity-editor { border-left: 4px solid var(--c, var(--primary)); max-width: 760px; }
 .day-picker { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
 .day-picker button { border: none; background: transparent; padding: 0.4rem 0.7rem; font: inherit; color: var(--text); cursor: pointer; }

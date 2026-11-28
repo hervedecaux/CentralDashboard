@@ -3,6 +3,7 @@
 @inject ExpenseService Expenses
 @inject TaskService Tasks
 @inject ActivityService Activities
+@inject DashboardPerso.Services.Google.GoogleCalendarService Google
 
 <PageTitle>Accueil · Dashboard perso</PageTitle>
 
@@ -143,7 +144,7 @@ else
                 <h2>Au programme aujourd'hui</h2>
                 <a href="planning">Planning de la semaine</a>
             </div>
-            @if (activities!.Count == 0)
+            @if (activities!.Count == 0 && googleToday.Count == 0)
             {
                 <p class="muted">
                     Aucune activité prévue aujourd'hui.
@@ -193,6 +194,25 @@ else
                     </li>
                 }
             </ul>
+            @if (googleToday.Count > 0)
+            {
+                <h3 class="small muted google-today-title">Google Agenda</h3>
+                <ul class="list task-list">
+                    @foreach (var e in googleToday)
+                    {
+                        <li @key="(e.CalendarId, e.EventId)">
+                            <span class="task-main">
+                                <span class="muted activity-time">@(e.Start is { } st && e.End is { } en ? st.ToString("HH:mm") + "–" + en.ToString("HH:mm") : "journée")</span>
+                                <span class="dot" style="background:@e.Color"></span>
+                                @if (e.Link is not null) { <a href="@e.Link" target="_blank" rel="noopener">@e.Title</a> }
+                                else { <span>@e.Title</span> }
+                                @if (!string.IsNullOrWhiteSpace(e.Location)) { <span class="small muted">@e.Location</span> }
+                            </span>
+                        </li>
+                    }
+                </ul>
+            }
+            @if (googleError is not null) { <p class="negative small">Google Agenda : @googleError</p> }
         </section>
 
         <section class="card">
@@ -283,6 +303,29 @@ else
         await Tasks.SetStatusAsync(task.Id, done ? TaskItemStatus.Done : TaskItemStatus.Todo);
         await LoadTasks();
         await LoadActivities();
+    }
+
+    private List<DashboardPerso.Services.Google.CalendarEntry> googleToday = [];
+    private string? googleError;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Événements Google du jour, chargés après l'affichage pour ne pas ralentir l'accueil.
+        if (!firstRender || !Google.IsConnected) return;
+        try
+        {
+            var day = DateOnly.FromDateTime(DateTime.Today);
+            var week = await Google.GetEntriesAsync(day, day.AddDays(1));
+            // Les activités exportées sont déjà dans la liste ci-dessus.
+            googleToday = week.Entries.Where(e => e.LocalKey is null || !e.LocalKey.StartsWith("activity:"))
+                .OrderBy(e => e.Start ?? TimeOnly.MinValue).ToList();
+            googleError = week.Error;
+        }
+        catch (Exception ex) when (ex is DashboardPerso.Services.Google.GoogleApiException or DashboardPerso.Services.Google.GoogleNotConnectedException)
+        {
+            googleError = ex.Message;
+        }
+        StateHasChanged();
     }
 
     private async Task LoadActivities()

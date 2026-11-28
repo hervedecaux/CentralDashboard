@@ -170,6 +170,35 @@ Le libellé bancaire complet est conservé dans les notes de chaque dépense imp
 
 ![Semaine type](docs/apercu-semaine-type.png)
 
+## Google Agenda
+
+**Réglages › Google Agenda** relie l'application à votre compte Google :
+
+- **Planning** : les événements des agendas Google choisis s'affichent dans la grille (bordure en pointillé, couleur de l'agenda), les événements « journée entière » dans une ligne sous les jours. Un clic ouvre le détail et un lien vers Google Agenda. L'accueil liste aussi les événements Google du jour.
+- **Exporter une activité** : dans l'éditeur d'une activité du planning, « Exporter vers Google Agenda ». L'activité garde ses horaires ; elle est ensuite mise à jour (ou retirée) quand vous la modifiez ou la supprimez ici. Une activité exportée porte un petit « G » dans la grille.
+- **Exporter une tâche** : sur la fiche d'une tâche, carte « Google Agenda ». La tâche devient un événement « journée entière » le jour prévu (sinon à l'échéance), marqué « disponible » pour ne pas bloquer l'agenda, et suit ensuite les modifications de la tâche.
+- Les exports sont repérés dans Google par une propriété privée : rien n'est stocké dans la base, et les essais faits en développement (base `dashboard-dev.db`) ne touchent pas aux exports de la version installée.
+
+### Configuration (une seule fois, environ 10 minutes)
+
+L'application utilise **votre propre** projet Google Cloud (gratuit) : aucun service tiers ne voit vos agendas.
+
+1. Ouvrez <https://console.cloud.google.com/> avec votre compte Google, puis créez un projet (menu des projets en haut › **Nouveau projet**, ex. « Dashboard perso »).
+2. **API et services › Bibliothèque** : cherchez **Google Calendar API** et cliquez sur **Activer**.
+3. **Google Auth Platform** (anciennement « Écran de consentement OAuth ») › **Commencer** :
+   nom de l'application « Dashboard perso », votre adresse e-mail d'assistance, audience **Externe**, votre adresse de contact, puis acceptez et **Créer**.
+4. **Audience** : cliquez sur **Publier l'application** (statut « En production »).
+   Sans cela (statut « Test »), Google coupe l'accès au bout de 7 jours et il faut se reconnecter chaque semaine.
+   Pas besoin de faire valider l'application : vous serez la seule personne à l'utiliser.
+5. **Clients › Créer un client** : type d'application **Application de bureau**, nom « Dashboard perso Mac », **Créer**, puis **Télécharger le JSON** (fichier `client_secret_….json`).
+6. Dans l'application : **Réglages › Google Agenda**, choisissez ce fichier JSON (ou copiez l'ID client et le secret client), **Enregistrer**, puis **Se connecter à Google**.
+7. Sur la page Google : choisissez votre compte. L'avertissement « Google n'a pas validé cette application » est normal pour une application personnelle : **Paramètres avancés › Accéder à Dashboard perso (non sécurisé)**, puis cochez les deux autorisations (liste des agendas, événements).
+8. De retour dans l'application, cochez les agendas à afficher dans le planning et choisissez l'agenda d'export.
+
+La connexion fonctionne aussi bien avec la version installée (port 5080) qu'avec `dotnet run` (port 5090) : un client « Application de bureau » accepte tout retour sur `http://localhost`.
+
+**Où sont les identifiants ?** Dans `google-agenda.json`, à côté de la base (`~/Library/Application Support/DashboardPerso/`), lisible par vous seul. Ce fichier n'est ni dans le dépôt ni dans les sauvegardes de la base. Pour tout couper : **Se déconnecter** dans l'application (l'accès est révoqué chez Google), ou <https://myaccount.google.com/permissions>.
+
 ## Tests
 
 ```bash
@@ -191,6 +220,7 @@ dashboard-perso/
     ├── Data/Migrations/           Schéma de la base, versionné
     ├── Services/                  Accès aux données (BudgetService, ExpenseService, TaskService)
     ├── Services/Import/           Lecture du CSV bancaire, doublons, règles de catégorie
+    ├── Services/Google/           Connexion OAuth et API Google Agenda (lecture, export)
     ├── Components/Pages/          Accueil, Budget/, Depenses/, Taches/
     ├── Components/Shared/         Sélecteur de mois, barre de progression, pagination, bouton supprimer
     └── wwwroot/app.css            Styles (thème clair / sombre automatique selon macOS)
