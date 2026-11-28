@@ -35,6 +35,16 @@ public class Account
 
     public bool IsManual => ImportId is null;
 
+    /// <summary>
+    /// Numéro du compte lu en tête des relevés (« Compte de Dépôt n° 12345678901 ») : permet de rattacher
+    /// automatiquement chaque fichier CSV au bon compte quand on en a plusieurs.
+    /// </summary>
+    [StringLength(40)]
+    public string? AccountNumber { get; set; }
+
+    /// <summary>Compte bancaire (compte courant, livret…), par opposition à une carte.</summary>
+    public bool IsBankAccount => Kind is AccountKind.CheckingAccount or AccountKind.Other;
+
     /// <summary>Solde de départ, à la fin de la journée <see cref="InitialBalanceDate"/>.</summary>
     public decimal? InitialBalance { get; set; }
     public DateOnly? InitialBalanceDate { get; set; }

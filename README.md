@@ -117,6 +117,8 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Environnement : �
 ## Comptes, cartes et bénéficiaires
 
 - **Comptes et cartes** (`/comptes`) : chaque compte ou carte présent dans un relevé est créé à l'import. Son libellé est modifiable et il est conservé aux imports suivants. Pour une **carte sans relevé téléchargeable** (ex. carte de crédit), ajoutez-la ici puis saisissez ses dépenses à la main : le bouton « + Nouvelle dépense » de son onglet la présélectionne.
+- **Plusieurs comptes** : importez le fichier CSV de chaque compte. Le numéro de compte écrit en tête du fichier (« Compte de Dépôt n° … ») rattache le relevé au bon compte ; un numéro inconnu crée un nouveau compte (« Compte ••7766 », à renommer). Le premier relevé importé donne son numéro au compte courant d'origine. Dans l'aperçu, « Compte du relevé » permet de choisir un autre compte. Le numéro d'un compte se modifie aussi dans **Comptes et cartes**.
+- **Supprimer un compte ou une carte** : le lien « Supprimer » propose de rattacher ses opérations à un autre compte ou une autre carte, ou de les supprimer avec lui. Le compte courant d'origine (compte par défaut des saisies) ne peut pas être supprimé, seulement renommé.
 - **Bénéficiaires** (`/beneficiaires`) : ils sont déduits du libellé bancaire à l'import (« ORANGE SA-ORANGE - Orange - Votre abonnement… » → « ORANGE SA-ORANGE »), ou saisis sur une dépense. On peut les renommer : le lien avec le libellé bancaire est conservé.
 - **Catégorie par défaut** d'un bénéficiaire (ou « Transfert ») : elle s'applique aux nouvelles dépenses, à l'import comme à la saisie, avant les règles d'import. « Appliquer » catégorise aussi ses dépenses existantes sans catégorie.
 
@@ -124,7 +126,7 @@ Le chemin exact est affiché dans le Terminal au démarrage (`Environnement : �
 
 - **Ventiler une dépense** : sur la fiche d'une dépense, « Ventiler sur plusieurs catégories » permet de répartir le montant en plusieurs parts. Leur somme doit égaler le montant, et chaque part compte dans le budget de sa catégorie.
 - **Recettes** : le choix Dépense / Recette se fait en haut de la fiche. Les recettes s'affichent en vert avec un « + » dans la liste. Voir la section Recettes pour leur suivi dans le budget.
-- **Solde théorique** : dans **Comptes et cartes**, saisissez le solde du compte courant à une date (fin de journée). Le solde théorique = ce solde + recettes − dépenses et transferts du compte courant postérieurs. Il est comparé au solde indiqué par la banque dans le dernier relevé importé, et affiché sur l'accueil. Un écart signale en général des opérations manquantes.
+- **Solde théorique** : dans **Comptes et cartes**, saisissez le solde de chaque compte à une date (fin de journée). Le solde théorique = ce solde + recettes − dépenses et transferts du compte courant postérieurs. Il est comparé au solde indiqué par la banque dans le dernier relevé importé, et affiché sur l'accueil. Un écart signale en général des opérations manquantes.
 
 ## Effacer les opérations importées
 

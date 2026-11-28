@@ -99,7 +99,7 @@
         </p>
         @if (ClearsBankBalance)
         {
-            <p class="muted small">Le solde banque mémorisé du compte courant sera aussi effacé ; il reviendra au prochain import.</p>
+            <p class="muted small">Le solde banque mémorisé @(accountId is null ? "des comptes" : "du compte") sera aussi effacé ; il reviendra au prochain import.</p>
         }
         <label>
             <span>Pour confirmer, tapez <strong>EFFACER</strong></span>
@@ -131,7 +131,7 @@
     private ImportedFilter Filter => new(accountId, from, to);
 
     private bool ClearsBankBalance =>
-        (accountId is null || accountId == Account.MainAccountId) && from is null && to is null;
+        (accountId is null || accounts.Any(a => a.Id == accountId && a.IsBankAccount)) && from is null && to is null;
 
     protected override async Task OnInitializedAsync()
     {

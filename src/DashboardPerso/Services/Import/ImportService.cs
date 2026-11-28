@@ -55,12 +55,28 @@ public record ImportedFilter(int? AccountId = null, DateOnly? From = null, DateO
 /// <summary>Ce que l'effacement toucherait.</summary>
 public record ImportedSummary(int Count, int Income, int Transfers, decimal Debits, decimal Credits, DateOnly? First, DateOnly? Last);
 
-/// <summary>Aperçu d'un relevé : lignes et solde indiqué par la banque.</summary>
-public record ImportPreview(List<ImportRow> Rows, decimal? BankBalance, DateOnly? BankBalanceDate);
+/// <summary>
+/// Compte auquel les opérations « compte » d'un relevé sont rattachées (les cartes gardent leur propre compte).
+/// <see cref="AccountId"/> est null pour un compte à créer à l'import.
+/// </summary>
+public record ImportTarget(int? AccountId, string ImportId, string Label, string? AccountNumber)
+{
+    public bool IsNew => AccountId is null;
+}
+
+/// <summary>Aperçu d'un relevé : lignes, solde indiqué par la banque et compte de destination.</summary>
+public record ImportPreview(List<ImportRow> Rows, decimal? BankBalance, DateOnly? BankBalanceDate, ImportTarget? Target = null)
+{
+    /// <summary>Numéro de compte lu en tête du fichier (null s'il n'y figure pas).</summary>
+    public string? AccountNumber => Target?.AccountNumber;
+}
 
 public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
 {
     public const int MaxFileSize = 5 * 1024 * 1024;
+
+    /// <summary>Valeur de <c>targetAccountId</c> pour importer le relevé dans un nouveau compte.</summary>
+    public const int NewAccount = 0;
 
     private sealed record Rule(string Pattern, string Normalized, int? CategoryId, bool MarkAsTransfer);
 
@@ -79,16 +95,22 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         public bool IsIncomeCategory(int? categoryId) => categoryId is { } id && IncomeCategoryIds.Contains(id);
     }
 
-    public async Task<List<ImportRow>> PreviewAsync(byte[] content) => (await PreviewStatementAsync(content)).Rows;
+    public async Task<List<ImportRow>> PreviewAsync(byte[] content, int? targetAccountId = null) =>
+        (await PreviewStatementAsync(content, targetAccountId)).Rows;
 
-    /// <summary>Lit le fichier et prépare l'aperçu : doublons détectés, catégories et transferts proposés.</summary>
-    public async Task<ImportPreview> PreviewStatementAsync(byte[] content)
+    /// <summary>
+    /// Lit le fichier et prépare l'aperçu : doublons détectés, catégories et transferts proposés.
+    /// <paramref name="targetAccountId"/> : compte qui reçoit les opérations du compte (pas celles des cartes) ;
+    /// null pour le choisir d'après le numéro de compte du fichier, <see cref="NewAccount"/> pour en créer un.
+    /// </summary>
+    public async Task<ImportPreview> PreviewStatementAsync(byte[] content, int? targetAccountId = null)
     {
         var statement = CreditAgricoleCsvParser.ParseStatement(content);
         var operations = statement.Operations;
-        if (operations.Count == 0) return new ImportPreview([], statement.Balance, statement.BalanceDate);
 
         await using var db = await dbFactory.CreateDbContextAsync();
+        var target = await ResolveTargetAsync(db, statement.AccountNumber, targetAccountId);
+        if (operations.Count == 0) return new ImportPreview([], statement.Balance, statement.BalanceDate, target);
         var from = operations.Min(o => o.Date);
         var to = operations.Max(o => o.Date);
 
@@ -106,7 +128,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             .ToHashSet();
 
         var rules = await LoadDefaultsAsync(db);
-        var keys = ComputeKeys(operations);
+        var keys = ComputeKeys(operations, KeySalt(target));
 
         var rows = operations.Select((op, i) =>
         {
@@ -125,8 +147,49 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             ApplyRule(row, rules);
             return row;
         }).ToList();
-        return new ImportPreview(rows, statement.Balance, statement.BalanceDate);
+        return new ImportPreview(rows, statement.Balance, statement.BalanceDate, target);
     }
+
+    /// <summary>
+    /// Compte de destination : celui qui porte le numéro du fichier ; sinon le compte courant d'origine s'il n'a pas
+    /// encore de numéro (premier import, ou base créée avant la gestion de plusieurs comptes) ; sinon un nouveau compte.
+    /// </summary>
+    private static async Task<ImportTarget> ResolveTargetAsync(AppDbContext db, string? number, int? requested)
+    {
+        var accounts = await db.Accounts.AsNoTracking().ToListAsync();
+        var account = requested switch
+        {
+            NewAccount => null,
+            { } id => accounts.FirstOrDefault(a => a.Id == id && a.IsBankAccount)
+                      ?? throw new InvalidOperationException("Ce compte n'existe pas (ou c'est une carte)."),
+            null => (number is null ? null : accounts.FirstOrDefault(a => a.AccountNumber == number))
+                    ?? accounts.FirstOrDefault(a => a.Id == Account.MainAccountId && a.AccountNumber is null)
+                    ?? (number is null ? accounts.First(a => a.Id == Account.MainAccountId) : null),
+        };
+
+        if (account is not null)
+        {
+            var importId = account.Id == Account.MainAccountId ? BankOperation.AccountSource
+                : account.ImportId ?? FreeImportId(accounts, number);
+            return new ImportTarget(account.Id, importId, account.Label, number);
+        }
+        var label = number is null ? "Nouveau compte" : $"Compte ••{number[^Math.Min(4, number.Length)..]}";
+        return new ImportTarget(null, FreeImportId(accounts, number), label, number);
+    }
+
+    /// <summary>Identifiant d'import d'un compte autre que le compte courant d'origine : « Compte 12345678901 ».</summary>
+    private static string FreeImportId(List<Account> accounts, string? number)
+    {
+        var id = number is null ? $"Compte {Guid.NewGuid():N}"[..16] : $"Compte {number}";
+        return accounts.Any(a => a.ImportId == id) ? $"{id} {Guid.NewGuid():N}"[..Math.Min(80, id.Length + 9)] : id;
+    }
+
+    /// <summary>
+    /// Les opérations du compte courant d'origine gardent leur empreinte historique ; celles d'un autre compte
+    /// incluent son identifiant, pour que deux comptes aux opérations identiques ne se masquent pas.
+    /// </summary>
+    private static string? KeySalt(ImportTarget? target) =>
+        target is null || target.ImportId == BankOperation.AccountSource ? null : target.ImportId;
 
     /// <summary>Réapplique les règles (ex. après en avoir créé une) aux lignes non modifiées à la main.</summary>
     public async Task ApplyRulesAsync(IEnumerable<ImportRow> rows)
@@ -138,19 +201,30 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
     }
 
     /// <summary>Enregistre les lignes cochées comme dépenses (ou transferts). Renvoie le nombre de lignes créées.</summary>
-    public async Task<int> ImportAsync(IEnumerable<ImportRow> rows, decimal? bankBalance = null, DateOnly? bankBalanceDate = null)
+    public Task<int> ImportAsync(IEnumerable<ImportRow> rows, decimal? bankBalance = null, DateOnly? bankBalanceDate = null) =>
+        ImportAsync(rows, null, bankBalance, bankBalanceDate);
+
+    public Task<int> ImportAsync(ImportPreview preview) =>
+        ImportAsync(preview.Rows, preview.Target, preview.BankBalance, preview.BankBalanceDate);
+
+    /// <summary>
+    /// Enregistre les lignes cochées. Les opérations du compte vont dans <paramref name="target"/> (créé au besoin,
+    /// le compte courant d'origine si null), celles des cartes dans le compte de chaque carte.
+    /// </summary>
+    public async Task<int> ImportAsync(IEnumerable<ImportRow> rows, ImportTarget? target, decimal? bankBalance, DateOnly? bankBalanceDate)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         var selected = rows.Where(r => r.Include && r.Operation.Amount > 0).ToList();
 
+        var account = await GetOrCreateTargetAsync(db, target);
+
         // Solde indiqué par la banque : conservé s'il est plus récent, pour le comparer au solde théorique.
         if (bankBalance is not null && bankBalanceDate is not null)
         {
-            var main = await db.Accounts.FirstAsync(a => a.Id == Account.MainAccountId);
-            if (main.BankBalanceDate is null || main.BankBalanceDate <= bankBalanceDate)
+            if (account.BankBalanceDate is null || account.BankBalanceDate <= bankBalanceDate)
             {
-                main.BankBalance = bankBalance;
-                main.BankBalanceDate = bankBalanceDate;
+                account.BankBalance = bankBalance;
+                account.BankBalanceDate = bankBalanceDate;
             }
         }
 
@@ -165,8 +239,10 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         var added = 0;
         foreach (var row in selected.Where(r => !already.Contains(r.ImportKey)))
         {
-            var account = await AccountService.GetOrCreateForImportAsync(
-                db, row.Operation.Source, row.Operation.DefaultSourceLabel, row.Operation.IsCardOperation);
+            var source = row.Operation.IsCardOperation
+                ? await AccountService.GetOrCreateForImportAsync(
+                    db, row.Operation.Source, row.Operation.DefaultSourceLabel, isCard: true)
+                : account;
             var payee = row.Operation.IsCardStatementTotal ? null : await PayeeService.GetOrCreateAsync(db, row.Payee);
             db.Expenses.Add(new Expense
             {
@@ -178,7 +254,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
                     ? null : row.CategoryId,
                 IsTransfer = row.IsTransfer,
                 IsIncome = row.IsIncome,
-                Account = account,
+                Account = source,
                 Payee = payee,
                 Notes = Truncate(row.Operation.RawLabel, 500),
                 ImportKey = row.ImportKey,
@@ -187,6 +263,27 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         }
         await db.SaveChangesAsync();
         return added;
+    }
+
+    /// <summary>Compte de destination, créé s'il est nouveau ; son numéro et son identifiant d'import sont mémorisés.</summary>
+    private static async Task<Account> GetOrCreateTargetAsync(AppDbContext db, ImportTarget? target)
+    {
+        if (target is null) return await db.Accounts.FirstAsync(a => a.Id == Account.MainAccountId);
+
+        Account account;
+        if (target.AccountId is { } id)
+            account = await db.Accounts.FirstAsync(a => a.Id == id);
+        else
+        {
+            // Double validation : le compte a pu être créé entre-temps.
+            account = await db.Accounts.FirstOrDefaultAsync(a => a.ImportId == target.ImportId)
+                ?? db.Accounts.Add(new Account { Label = target.Label, Kind = AccountKind.CheckingAccount }).Entity;
+        }
+        if (account.Id != Account.MainAccountId) account.ImportId ??= target.ImportId;
+        if (target.AccountNumber is { } number && account.AccountNumber is null
+            && !await db.Accounts.AnyAsync(a => a.AccountNumber == number && a.Id != account.Id))
+            account.AccountNumber = number;
+        return account;
     }
 
     /// <summary>Résumé des opérations importées correspondant au filtre (les saisies manuelles ne sont jamais comptées).</summary>
@@ -209,7 +306,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
     /// <summary>
     /// Efface les opérations importées correspondant au filtre (et leurs ventilations), pour pouvoir les réimporter.
     /// Catégories, budgets, règles, bénéficiaires, comptes, solde initial et saisies manuelles sont conservés.
-    /// Quand toutes les opérations importées du compte courant sont effacées, le solde banque mémorisé l'est aussi.
+    /// Quand toutes les opérations importées d'un compte sont effacées, son solde banque mémorisé l'est aussi.
     /// Renvoie le nombre d'opérations effacées.
     /// </summary>
     public async Task<int> DeleteImportedAsync(ImportedFilter filter)
@@ -220,10 +317,9 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
         await db.ExpenseSplits.Where(x => ids.Contains(x.ExpenseId)).ExecuteDeleteAsync();
         var deleted = await Imported(db, filter).ExecuteDeleteAsync();
 
-        var mainCleared = (filter.AccountId is null || filter.AccountId == Account.MainAccountId)
-                          && filter.From is null && filter.To is null;
-        if (mainCleared)
-            await db.Accounts.Where(a => a.Id == Account.MainAccountId)
+        // Toutes les opérations importées d'un compte effacées : son solde banque mémorisé ne correspond plus à rien.
+        if (filter.From is null && filter.To is null)
+            await db.Accounts.Where(a => filter.AccountId == null || a.Id == filter.AccountId)
                 .ExecuteUpdateAsync(x => x.SetProperty(a => a.BankBalance, (decimal?)null)
                                           .SetProperty(a => a.BankBalanceDate, (DateOnly?)null));
         await tx.CommitAsync();
@@ -243,7 +339,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
     /// Empreinte stable d'une opération : date + montants + libellé complet normalisé (+ carte d'origine).
     /// Deux opérations strictement identiques le même jour sont distinguées par leur rang.
     /// </summary>
-    public static List<string> ComputeKeys(IReadOnlyList<BankOperation> operations)
+    public static List<string> ComputeKeys(IReadOnlyList<BankOperation> operations, string? accountSalt = null)
     {
         var seen = new Dictionary<string, int>();
         var result = new List<string>(operations.Count);
@@ -258,6 +354,7 @@ public class ImportService(IDbContextFactory<AppDbContext> dbFactory)
             };
             // Les opérations du compte gardent la même empreinte qu'avant l'ajout des cartes.
             if (op.IsCardOperation) parts.Add(TextNormalizer.Normalize(op.Source));
+            else if (accountSalt is not null) parts.Add(TextNormalizer.Normalize(accountSalt));
 
             var baseKey = string.Join('|', parts);
             var occurrence = seen[baseKey] = seen.GetValueOrDefault(baseKey) + 1;

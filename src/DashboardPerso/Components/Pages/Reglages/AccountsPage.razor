@@ -8,7 +8,8 @@
 </header>
 
 <p class="muted">
-    Les comptes et cartes présents dans un relevé importé sont ajoutés automatiquement.
+    Les comptes et cartes présents dans un relevé importé sont ajoutés automatiquement. Avec plusieurs comptes,
+    importez le fichier CSV de chacun : il est rattaché au compte qui porte le même numéro (indiqué en tête du fichier).
     Ajoutez ici une carte sans relevé téléchargeable (ex. carte de crédit) : ses dépenses se saisissent à la main,
     en choisissant cette carte dans le champ « Compte / carte ».
 </p>
@@ -22,7 +23,7 @@ else
     <div class="card table-card">
         <table class="table">
             <thead>
-                <tr><th>Libellé affiché</th><th>Type</th><th>Origine</th><th class="col-justify-end">Opérations</th><th></th></tr>
+                <tr><th>Libellé affiché</th><th>Type</th><th>N° de compte</th><th>Origine</th><th class="col-justify-end">Opérations</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (var s in items)
@@ -37,6 +38,12 @@ else
                                     @foreach (var k in Enum.GetValues<AccountKind>()) { <option value="@k">@k.Label()</option> }
                                 </select>
                             </td>
+                            <td>
+                                @if (IsBankKind(editing.Kind))
+                                {
+                                    <input @bind="editing.AccountNumber" placeholder="ex. 12345678901" class="label-input" />
+                                }
+                            </td>
                             <td class="muted small">@(a.ImportId ?? "Saisie manuelle")</td>
                             <td class="col-justify-end">@s.ExpenseCount</td>
                             <td class="col-justify-end nowrap">
@@ -50,15 +57,17 @@ else
                         <tr>
                             <td><strong>@a.Label</strong></td>
                             <td>@a.Kind.Label()</td>
-                            <td class="muted small">@(a.ImportId is null ? "Saisie manuelle" : $"Relevé : {a.ImportId}")</td>
+                            <td class="muted small">@a.AccountNumber</td>
+                            <td class="muted small">@(a.ImportId is null ? "Saisie manuelle" : a.IsBankAccount ? "Relevé importé" : $"Relevé : {a.ImportId}")</td>
                             <td class="col-justify-end">
                                 @if (s.ExpenseCount > 0) { <a href="depenses?compte=@a.Id">@s.ExpenseCount</a> } else { <span class="muted">0</span> }
                             </td>
                             <td class="col-justify-end nowrap">
                                 <button class="link small" @onclick="() => StartEdit(a)">Modifier</button>
-                                @if (a.Id != Account.MainAccountId && s.ExpenseCount == 0)
+                                @if (a.Id != Account.MainAccountId)
                                 {
-                                    <span class="muted"> · </span><DeleteButton OnConfirm="() => Delete(a.Id)" />
+                                    <span class="muted"> · </span>
+                                    <button class="link small danger" @onclick="() => StartDelete(s)">Supprimer</button>
                                 }
                             </td>
                         </tr>
@@ -68,112 +77,217 @@ else
         </table>
     </div>
 
-    <div class="card form-card balance-card">
-        <h2>Solde du compte courant</h2>
-        <p class="muted small">
-            Le solde théorique part de ce solde (en fin de journée à la date indiquée) et ajoute les recettes
-            et retire les dépenses et transferts du compte courant postérieurs. Il est comparé au solde
-            indiqué par la banque dans le dernier relevé importé.
-        </p>
-        <div class="rule-draft plain">
-            <label class="inline">Solde initial (€) <input type="number" step="0.01" @bind="initialAmount" /></label>
-            <label class="inline">au <input type="date" @bind="initialDate" /></label>
-            <button class="btn btn-primary" @onclick="SaveInitial">Enregistrer</button>
-            @if (balance is not null) { <button class="btn btn-ghost" @onclick="ClearInitial">Effacer</button> }
-        </div>
-        @if (balance is not null)
-        {
-            <div class="balance-grid">
-                <span>Solde théorique aujourd'hui</span><strong>@balance.Theoretical.ToString("C")</strong>
-                @if (balance.BankDate is not null)
-                {
-                    <span>Solde banque au @balance.BankDate?.ToString("dd/MM/yyyy")</span><strong>@balance.BankBalance?.ToString("C")</strong>
-                    <span>Solde théorique à cette date</span><strong>@balance.TheoreticalAtBankDate?.ToString("C")</strong>
-                    <span>Écart</span>
-                    <strong class="@(balance.Difference == 0 ? "positive" : "negative")">
-                        @(balance.Difference == 0 ? "aucun ✓" : balance.Difference?.ToString("+#,##0.00 €;-#,##0.00 €"))
-                    </strong>
-                }
-            </div>
-            @if (balance.Difference is { } d && d != 0)
+    @if (deleting is not null)
+    {
+        var d = deleting.Account;
+        <div class="card form-card danger-zone">
+            <h2>Supprimer « @d.Label »</h2>
+            @if (deleting.ExpenseCount == 0)
+            {
+                <p class="muted">Ce compte n'a aucune opération.</p>
+            }
+            else
+            {
+                <p>Ce compte a <strong>@deleting.ExpenseCount opération(s)</strong>. Que faire de ces opérations ?</p>
+                <label class="inline">
+                    <input type="radio" name="deletion" checked="@(deleteMode == AccountDeletion.MoveOperations)"
+                           @onchange="() => deleteMode = AccountDeletion.MoveOperations" />
+                    Les rattacher à
+                    <select @bind="moveTo">
+                        <option value="">Choisir…</option>
+                        @foreach (var o in items.Where(x => x.Account.Id != d.Id)) { <option value="@o.Account.Id">@o.Account.Label</option> }
+                    </select>
+                </label>
+                <label class="inline">
+                    <input type="radio" name="deletion" checked="@(deleteMode == AccountDeletion.DeleteOperations)"
+                           @onchange="() => deleteMode = AccountDeletion.DeleteOperations" />
+                    Les supprimer aussi (avec leurs ventilations)
+                </label>
+            }
+            @if (d.ImportId is not null)
             {
                 <p class="muted small">
-                    Un écart vient en général d'opérations non importées (relevé manquant, lignes décochées) ou
-                    d'un solde initial à une mauvaise date.
+                    @(d.IsBankAccount ? "Si ce compte figure dans un relevé importé plus tard, il sera recréé automatiquement."
+                                      : "Si cette carte figure dans un relevé importé plus tard, elle sera recréée automatiquement.")
                 </p>
             }
-        }
-    </div>
+            <div class="form-actions">
+                <button class="btn btn-danger" disabled="@(!CanDelete)" @onclick="ConfirmDelete">
+                    @(deleting.ExpenseCount == 0 ? "Supprimer" : deleteMode == AccountDeletion.DeleteOperations
+                        ? $"Supprimer le compte et ses {deleting.ExpenseCount} opération(s)"
+                        : "Déplacer les opérations et supprimer")
+                </button>
+                <button class="btn btn-ghost" @onclick="() => deleting = null">Annuler</button>
+            </div>
+        </div>
+    }
+    @if (error is not null) { <p class="negative">@error</p> }
+    @if (message is not null) { <p class="positive">@message</p> }
+
+    @foreach (var b in balances)
+    {
+        var id = b.Account.Id;
+        var balance = b.Balance;
+        <div class="card form-card balance-card" @key="id">
+            <h2>Solde · @b.Account.Label</h2>
+            <p class="muted small">
+                Le solde théorique part de ce solde (en fin de journée à la date indiquée) et ajoute les recettes
+                et retire les dépenses et transferts de ce compte postérieurs. Il est comparé au solde
+                indiqué par la banque dans le dernier relevé importé de ce compte.
+            </p>
+            <div class="rule-draft plain">
+                <label class="inline">Solde initial (€) <input type="number" step="0.01" value="@Initial(id).Amount?.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                                             @onchange="e => Initial(id).Amount = decimal.TryParse(e.Value as string, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null" /></label>
+                <label class="inline">au <input type="date" value="@Initial(id).Date?.ToString("yyyy-MM-dd")"
+                                               @onchange="e => Initial(id).Date = DateOnly.TryParse(e.Value as string, System.Globalization.CultureInfo.InvariantCulture, out var dt) ? dt : null" /></label>
+                <button class="btn btn-primary" @onclick="() => SaveInitial(id)">Enregistrer</button>
+                @if (balance is not null) { <button class="btn btn-ghost" @onclick="() => ClearInitial(id)">Effacer</button> }
+            </div>
+            @if (balance is not null)
+            {
+                <div class="balance-grid">
+                    <span>Solde théorique aujourd'hui</span><strong>@balance.Theoretical.ToString("C")</strong>
+                    @if (balance.BankDate is not null)
+                    {
+                        <span>Solde banque au @balance.BankDate?.ToString("dd/MM/yyyy")</span><strong>@balance.BankBalance?.ToString("C")</strong>
+                        <span>Solde théorique à cette date</span><strong>@balance.TheoreticalAtBankDate?.ToString("C")</strong>
+                        <span>Écart</span>
+                        <strong class="@(balance.Difference == 0 ? "positive" : "negative")">
+                            @(balance.Difference == 0 ? "aucun ✓" : balance.Difference?.ToString("+#,##0.00 €;-#,##0.00 €"))
+                        </strong>
+                    }
+                </div>
+                @if (balance.Difference is { } diff && diff != 0)
+                {
+                    <p class="muted small">
+                        Un écart vient en général d'opérations non importées (relevé manquant, lignes décochées) ou
+                        d'un solde initial à une mauvaise date.
+                    </p>
+                }
+            }
+        </div>
+    }
 
     <div class="card rule-draft">
         <strong>Ajouter une carte ou un compte</strong>
-        <input @bind="newLabel" @bind:event="oninput" placeholder="ex. Carte de crédit Visa" />
+        <input @bind="newLabel" @bind:event="oninput" placeholder="ex. Carte de crédit Visa, Compte joint" />
         <select @bind="newKind">
             @foreach (var k in Enum.GetValues<AccountKind>()) { <option value="@k">@k.Label()</option> }
         </select>
+        @if (IsBankKind(newKind))
+        {
+            <input @bind="newNumber" placeholder="N° de compte (facultatif)" />
+        }
         <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(newLabel)" @onclick="Add">Ajouter</button>
     </div>
-    @if (error is not null) { <p class="negative">@error</p> }
 }
 
 @code {
     private List<AccountSummary>? items;
+    private List<AccountBalanceSummary> balances = [];
     private Account? editing;
     private string newLabel = "";
+    private string? newNumber;
     private AccountKind newKind = AccountKind.CreditCard;
-    private string? error;
+    private string? error, message;
 
-    private AccountBalance? balance;
-    private decimal? initialAmount;
-    private DateOnly? initialDate;
+    private AccountSummary? deleting;
+    private AccountDeletion deleteMode = AccountDeletion.MoveOperations;
+    private int? moveTo;
 
-    protected override async Task OnInitializedAsync()
+    private sealed class InitialInput
     {
-        await Load();
-        var main = items!.First(s => s.Account.Id == Account.MainAccountId).Account;
-        initialAmount = main.InitialBalance;
-        initialDate = main.InitialBalanceDate;
+        public decimal? Amount { get; set; }
+        public DateOnly? Date { get; set; }
     }
+
+    private readonly Dictionary<int, InitialInput> initials = [];
+
+    private InitialInput Initial(int id) => initials.TryGetValue(id, out var i) ? i : initials[id] = new InitialInput();
+
+    private static bool IsBankKind(AccountKind k) => k is AccountKind.CheckingAccount or AccountKind.Other;
+
+    private bool CanDelete => deleting is not null
+        && (deleting.ExpenseCount == 0 || deleteMode == AccountDeletion.DeleteOperations || moveTo is not null);
+
+    protected override async Task OnInitializedAsync() => await Load();
 
     private async Task Load()
     {
         items = await Accounts.GetSummariesAsync();
-        balance = await Accounts.GetBalanceAsync();
+        balances = await Accounts.GetBankBalancesAsync();
+        foreach (var b in balances.Where(b => !initials.ContainsKey(b.Account.Id)))
+            initials[b.Account.Id] = new InitialInput { Amount = b.Account.InitialBalance, Date = b.Account.InitialBalanceDate };
     }
 
-    private async Task SaveInitial()
+    private async Task SaveInitial(int id)
     {
-        await Accounts.SetInitialBalanceAsync(Account.MainAccountId, initialAmount, initialDate);
+        var i = Initial(id);
+        await Accounts.SetInitialBalanceAsync(id, i.Amount, i.Date);
         await Load();
     }
 
-    private async Task ClearInitial()
+    private async Task ClearInitial(int id)
     {
-        initialAmount = null;
-        initialDate = null;
-        await SaveInitial();
+        initials[id] = new InitialInput();
+        await SaveInitial(id);
     }
 
-    private void StartEdit(Account a) => editing = new Account { Id = a.Id, Label = a.Label, Kind = a.Kind };
+    private void StartEdit(Account a)
+    {
+        error = message = null;
+        editing = new Account { Id = a.Id, Label = a.Label, Kind = a.Kind, AccountNumber = a.AccountNumber };
+    }
 
     private async Task SaveEdit()
     {
-        await Accounts.SaveAsync(editing!);
-        editing = null;
+        error = message = null;
+        if (!IsBankKind(editing!.Kind)) editing.AccountNumber = null;
+        try
+        {
+            await Accounts.SaveAsync(editing);
+            editing = null;
+        }
+        catch (InvalidOperationException ex) { error = ex.Message; }
         await Load();
     }
 
     private async Task Add()
     {
-        await Accounts.SaveAsync(new Account { Label = newLabel, Kind = newKind });
-        newLabel = "";
+        error = message = null;
+        try
+        {
+            await Accounts.SaveAsync(new Account { Label = newLabel, Kind = newKind, AccountNumber = IsBankKind(newKind) ? newNumber : null });
+            newLabel = "";
+            newNumber = null;
+        }
+        catch (InvalidOperationException ex) { error = ex.Message; }
         await Load();
     }
 
-    private async Task Delete(int id)
+    private void StartDelete(AccountSummary s)
     {
-        error = null;
-        try { await Accounts.DeleteAsync(id); }
+        error = message = null;
+        editing = null;
+        deleting = s;
+        deleteMode = AccountDeletion.MoveOperations;
+        moveTo = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        error = message = null;
+        var d = deleting!;
+        try
+        {
+            var mode = d.ExpenseCount == 0 ? AccountDeletion.OnlyIfEmpty : deleteMode;
+            var n = await Accounts.DeleteAsync(d.Account.Id, mode, moveTo);
+            initials.Remove(d.Account.Id);
+            message = n == 0 ? $"« {d.Account.Label} » supprimé."
+                : mode == AccountDeletion.DeleteOperations ? $"« {d.Account.Label} » et ses {n} opération(s) supprimés."
+                : $"« {d.Account.Label} » supprimé, {n} opération(s) déplacée(s).";
+            deleting = null;
+        }
         catch (InvalidOperationException ex) { error = ex.Message; }
         await Load();
     }

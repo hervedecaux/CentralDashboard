@@ -49,6 +49,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Account>().HasIndex(a => a.ImportId).IsUnique();
+        modelBuilder.Entity<Account>().HasIndex(a => a.AccountNumber).IsUnique();
 
         modelBuilder.Entity<ExpenseSplit>()
             .HasOne(s => s.Expense).WithMany(e => e.Splits)

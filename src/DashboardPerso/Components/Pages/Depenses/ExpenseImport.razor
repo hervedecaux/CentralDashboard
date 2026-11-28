@@ -27,6 +27,8 @@ else if (rows is null)
         <p>
             Sélectionnez le fichier CSV « Liste des opérations » téléchargé depuis votre espace Crédit Agricole.
             Rien n'est enregistré avant votre validation : vous verrez d'abord un aperçu.
+            Si vous avez plusieurs comptes, importez le fichier de chacun : le compte est reconnu grâce au numéro
+            indiqué en tête du fichier, et vous pouvez le changer dans l'aperçu.
         </p>
         <label>
             Fichier CSV
@@ -42,6 +44,29 @@ else if (rows is null)
 }
 else
 {
+    <div class="card rule-draft import-target">
+        <strong>Compte du relevé</strong>
+        @if (target?.AccountNumber is { } number) { <span class="muted">n° @number</span> }
+        else { <span class="muted">(numéro de compte absent du fichier)</span> }
+        <span class="muted">→</span>
+        <select value="@(target?.AccountId?.ToString() ?? NewValue)" @onchange="ChangeTarget" disabled="@loading">
+            @foreach (var a in bankAccounts)
+            {
+                <option value="@a.Id">@a.Label@(a.AccountNumber is { } n ? $" (n° {n})" : "")</option>
+            }
+            <option value="@NewValue">Nouveau compte@(target?.IsNew == true ? $" : « {target.Label} »" : "")</option>
+        </select>
+        @if (target?.IsNew == true)
+        {
+            <span class="muted small">Il sera créé à l'import ; renommez-le ensuite dans <a href="comptes">Comptes et cartes</a>.</span>
+        }
+        else if (target is not null && target.AccountNumber is not null
+                 && bankAccounts.FirstOrDefault(a => a.Id == target.AccountId)?.AccountNumber is null)
+        {
+            <span class="muted small">Ce compte n'a pas encore de numéro : le n° @target.AccountNumber lui sera associé, et les prochains relevés de ce compte y iront directement. Vérifiez que c'est le bon.</span>
+        }
+    </div>
+
     <section class="cards">
         <div class="card stat"><span class="stat-label">Fichier</span><span>@fileName</span><span class="muted">@rows.Count opérations, du @rows.Min(r => r.Operation.Date).ToString("dd/MM/yyyy") au @rows.Max(r => r.Operation.Date).ToString("dd/MM/yyyy")</span></div>
         <div class="card stat">
@@ -185,12 +210,18 @@ else
 
 
     private const string TransferValue = "transfert";
+    private const string NewValue = "nouveau";
+    private byte[]? content;
+    private ImportTarget? target;
+    private List<Account> bankAccounts = [];
     private string sourceFilter = "";
     private List<string> sources = [];
     private Dictionary<string, string> accountLabels = [];
 
     /// <summary>Libellé configuré du compte ou de la carte, sinon celui proposé par le relevé.</summary>
-    private string SourceLabel(string source) => accountLabels.TryGetValue(source, out var label) ? label
+    private string SourceLabel(string source) =>
+        source == BankOperation.AccountSource && target is not null ? target.Label
+        : accountLabels.TryGetValue(source, out var label) ? label
         : rows?.FirstOrDefault(r => r.Operation.Source == source)?.Operation.DefaultSourceLabel ?? source;
 
     private IEnumerable<ImportRow> Visible => rows!
@@ -218,14 +249,10 @@ else
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             fileName = file.Name;
-            var preview = await Import.PreviewStatementAsync(ms.ToArray());
-            rows = preview.Rows;
-            (bankBalance, bankBalanceDate) = (preview.BankBalance, preview.BankBalanceDate);
-            sources = rows.Select(r => r.Operation.Source).Distinct()
-                .OrderBy(s => s != BankOperation.AccountSource).ThenBy(s => s).ToList();
+            content = ms.ToArray();
+            await LoadPreview(null);
             sourceFilter = "";
-            accountLabels = await Accounts.GetLabelsByImportIdAsync();
-            if (rows.Count == 0)
+            if (rows!.Count == 0)
             {
                 rows = null;
                 error = "Aucune opération trouvée dans ce fichier.";
@@ -240,6 +267,27 @@ else
         {
             loading = false;
         }
+    }
+
+    /// <summary>Relit le fichier pour le compte choisi (les empreintes et les doublons en dépendent).</summary>
+    private async Task LoadPreview(int? accountId)
+    {
+        var preview = await Import.PreviewStatementAsync(content!, accountId);
+        rows = preview.Rows;
+        target = preview.Target;
+        (bankBalance, bankBalanceDate) = (preview.BankBalance, preview.BankBalanceDate);
+        sources = rows.Select(r => r.Operation.Source).Distinct()
+            .OrderBy(s => s != BankOperation.AccountSource).ThenBy(s => s).ToList();
+        accountLabels = await Accounts.GetLabelsByImportIdAsync();
+        bankAccounts = (await Accounts.GetAllAsync()).Where(a => a.IsBankAccount).ToList();
+    }
+
+    private async Task ChangeTarget(ChangeEventArgs e)
+    {
+        var value = e.Value as string;
+        loading = true;
+        try { await LoadPreview(value == NewValue ? ImportService.NewAccount : int.Parse(value!)); }
+        finally { loading = false; }
     }
 
     private void SetCategory(ImportRow row, string? value)
@@ -276,7 +324,7 @@ else
     private async Task Save()
     {
         saving = true;
-        result = await Import.ImportAsync(rows!, bankBalance, bankBalanceDate);
+        result = await Import.ImportAsync(rows!, target, bankBalance, bankBalanceDate);
         saving = false;
         rows = null;
     }
@@ -284,6 +332,8 @@ else
     private void Reset()
     {
         rows = null;
+        content = null;
+        target = null;
         result = null;
         error = null;
         ruleDraft = null;
